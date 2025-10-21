@@ -28,7 +28,7 @@ x509-parser = "0.16"
 trust-dns-resolver = "0.23"
 zip = { version = "4.2.0", default-features = false }
 rpassword = "7.2"
-ldap3 = { git = "https://github.com/z-jxy/ldap3", branch = "feature/ntlm", default-features = false, features = ["ntlm"] }
+ldap3 = { git = "https://github.com/z-jxy/ldap3", branch = "feature/ntlm", default-features = false, features = ["ntlm"], version = "0.11.3" }
 winreg = { version = "0.52", optional = true }
 sha1 = "0.10"
 regex = "1"
