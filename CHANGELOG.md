@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.4.1
+
+### Date
+`2025/10/21`
+
+### Summary
+
+This release introduces the new `-H`,`--ldapntlmhash` options, enabling NTLM authentication using NT hash.
+
+All information regarding the code changes can be found in the original pull request: [#17](https://github.com/g0h4n/RustHound-CE/pull/17)
+
+Big thanks to [z-jxy](https://github.com/z-jxy) for the excellent work and for implementing this much-needed feature, as requested in issue #[5](https://github.com/g0h4n/RustHound-CE/issues/5)
+
 ## v2.4.0
 
 ### Date

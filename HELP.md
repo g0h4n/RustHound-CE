@@ -220,7 +220,8 @@ REQUIRED VALUES:
 OPTIONAL VALUES:
   -u, --ldapusername <ldapusername>  LDAP username, like: user@domain.local
   -p, --ldappassword <ldappassword>  LDAP password
-  -f, --ldapfqdn <ldapfqdn>          Domain Controler FQDN like: DC01.DOMAIN.LOCAL or just DC01
+  -H, --ldapntlmhash <ldapntlmhash>  LDAP NT hash for pass the hash authentication (PTH)
+  -f, --ldapfqdn <ldapfqdn>          Domain Controller FQDN like: DC01.DOMAIN.LOCAL or just DC01
   -i, --ldapip <ldapip>              Domain Controller IP address like: 192.168.1.10
   -P, --ldapport <ldapport>          LDAP port [default: 389]
   -n, --name-server <name-server>    Alternative IP address name server to use for DNS queries
@@ -229,6 +230,8 @@ OPTIONAL VALUES:
 OPTIONAL FLAGS:
   -c, --collectionmethod [<COLLECTIONMETHOD>]
           Which information to collect. Supported: All (LDAP,SMB,HTTP requests), DCOnly (no computer connections, only LDAP requests). (default: All) [possible values: All, DCOnly]
+      --ldap-filter <ldap-filter>
+          Use custom ldap-filter default is : (objectClass=*)
       --ldaps
           Force LDAPS using for request like: ldaps://DOMAIN.LOCAL/
   -k, --kerberos
@@ -237,6 +240,12 @@ OPTIONAL FLAGS:
           Use TCP instead of UDP for DNS queries
   -z, --zip
           Compress the JSON files into a zip archive
+      --cache
+          Cache LDAP search results to disk (reduce memory usage on large domains)
+      --cache-buffer <cache_buffer>
+          Buffer size to use when caching [default: 1000]
+      --resume
+          Resume the collection from the last saved state
 
 OPTIONAL MODULES:
       --fqdn-resolver  Use fqdn-resolver module to get computers IP address
@@ -247,6 +256,9 @@ OPTIONAL MODULES:
 ```bash
 # Linux with username:password
 rusthound-ce -d north.sevenkingdoms.local -u 'jeor.mormont@north.sevenkingdoms.local' -p '_L0ngCl@w_' -o /tmp/demo -z
+
+# Linux with username: nt hash (Pass The Hash)
+rusthound-ce -d north.sevenkingdoms.local -u 'jeor.mormont@north.sevenkingdoms.local' -H 6dccf1c567c56a40e56691a723a49664 -o /tmp/demo -z
 
 # Linux with username:password DCOnly collection method
 rusthound-ce -c DCOnly -d north.sevenkingdoms.local -u 'jeor.mormont@north.sevenkingdoms.local' -p '_L0ngCl@w_' -o /tmp/demo -z
@@ -266,6 +278,8 @@ rusthound-ce -d north.sevenkingdoms.local --ldaps -u 'jeor.mormont@north.sevenki
 rusthound-ce.exe -d sevenkingdoms.local --ldapfqdn kingslanding
 # Windows simple bind connection username:password (do not use single or double quotes with cmd.exe)
 rusthound-ce.exe -d sevenkingdoms.local -u jeor.mormont@north.sevenkingdoms.local -p _L0ngCl@w_ -o output -z
+# Windows NT hash authentication (Pass The Hash)
+rusthound-ce.exe -d sevenkingdoms.local -u jeor.mormont@north.sevenkingdoms.local -H 6dccf1c567c56a40e56691a723a49664 -z
 
 # Kerberos authentication (Linux)
 export KRB5CCNAME="/tmp/jeor.mormont.ccache"

@@ -87,7 +87,7 @@ fn cli() -> Command {
     .arg(Arg::new("ldapntlmhash")
         .short('H')
         .long("ldapntlmhash")
-        .help("LDAP NTLM hash")
+        .help("LDAP NT hash for pass the hash authentication (PTH)")
         .required(false)
         .conflicts_with("ldappassword")
         .value_parser(value_parser!(ldap3::NtlmHash))

@@ -33,6 +33,7 @@
 //! OPTIONAL VALUES:
 //!   -u, --ldapusername <ldapusername>  LDAP username, like: user@domain.local
 //!   -p, --ldappassword <ldappassword>  LDAP password
+//!   -H, --ldapntlmhash <ldapntlmhash>  LDAP NT hash
 //!   -f, --ldapfqdn <ldapfqdn>          Domain Controller FQDN like: DC01.DOMAIN.LOCAL or just DC01
 //!   -i, --ldapip <ldapip>              Domain Controller IP address like: 192.168.1.10
 //!   -P, --ldapport <ldapport>          LDAP port [default: 389]
