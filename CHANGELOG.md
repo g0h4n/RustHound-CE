@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.4.1
+
+### Date
+`2025/10/21`
+
+### Summary
+
+Fix issue [#16](https://github.com/g0h4n/RustHound-CE/issues/16) the [users.rs](https://github.com/g0h4n/RustHound-CE/blob/main/src/objects/user.rs#L186) code panic when trying to split on "/" if not present.
+Now fix in version 2.4.1 in main branch.
+
+**Rollback to version 2.4.0** and push PTH version into specific branch: [feat/ntlm-support](https://github.com/g0h4n/RustHound-CE/tree/feat/ntlm-support) I can't validate the pull request in the main branch because I can't publish it on [crates.io](crates.io) if ldap3 don't implement the feature ntlm create by [z-jxy](https://github.com/z-jxy).
+
+The branch [feat/ntlm-support](https://github.com/g0h4n/RustHound-CE/tree/feat/ntlm-support) introduces the new `-H`,`--ldapntlmhash` options, enabling NTLM authentication using NT hash for pass the hash.
+All information regarding the code changes can be found in the original pull request: [#17](https://github.com/g0h4n/RustHound-CE/pull/17)
+Big thanks to [z-jxy](https://github.com/z-jxy) for the excellent work and for implementing this much-needed feature, as requested in issue [#5](https://github.com/g0h4n/RustHound-CE/issues/5)
+
 ## v2.4.0
 
 ### Date

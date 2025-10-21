@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 use ldap3::SearchEntry;
 use log::{debug, error, trace};
 use std::collections::HashMap;
-use x509_parser::prelude::*;
 use std::error::Error;
+use std::collections::HashSet;
+use x509_parser::prelude::*;
 
 use crate::enums::regex::{OBJECT_SID_RE1, SID_PART1_RE1};
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
@@ -183,28 +184,38 @@ impl User {
                         };
                     }
                 }
-                "msDS-AllowedToDelegateTo"  => {
-                    // KCD (Kerberos Constrained Delegation)
-                    //trace!(" AllowToDelegateTo: {:?}",&value);
-                    // AllowedToDelegate
+                "msDS-AllowedToDelegateTo" => {
                     let mut vec_members2: Vec<Member> = Vec::new();
-                    for objet in value {
-                        let mut member_allowed_to_delegate = Member::new();
-                        let split = objet.split("/");
-                        let fqdn = split.collect::<Vec<&str>>()[1];
-                        let mut checker = false;
-                        for member in &vec_members2 {
-                          if member.object_identifier().contains(fqdn.to_uppercase().as_str()) {
-                                 checker = true;
-                         }
-                       }
-                        if !checker {
-                          *member_allowed_to_delegate.object_identifier_mut() = fqdn.to_uppercase().to_owned().to_uppercase();
-                          *member_allowed_to_delegate.object_type_mut() ="Computer".to_owned();
-                          vec_members2.push(member_allowed_to_delegate.to_owned()); 
-                       }
-                  }
-                    // *properties.allowedtodelegate = vec_members2.to_owned();
+                    let mut seen = HashSet::<String>::new();
+
+                    for spn_raw in value {
+                        // Normalise: trim, remplace '\' par '/', insensible à la casse
+                        let spn = spn_raw.trim().replace('\\', "/");
+                        // SPN need to be: service/host[:port][/...]
+                        let host_part = spn
+                            .split_once('/')   // Split to get hostname and service
+                            .map(|(_, rest)| rest)
+                            .unwrap_or(spn.as_str());
+
+                        // If the SPN got a port like mssql/sql01:1443 split to remove it
+                        let host = host_part.split(':').next().unwrap_or(host_part);
+
+                        // If empty ignore it (ex: "service/")
+                        let fqdn_upper = host.trim().to_ascii_uppercase();
+                        if fqdn_upper.is_empty() {
+                            error!("Skipping empty host in SPN: {:?}", spn_raw);
+                            continue;
+                        }
+                        
+                        // Save it 
+                        if seen.insert(fqdn_upper.clone()) {
+                            let mut m = Member::new();
+                            *m.object_identifier_mut() = fqdn_upper; // déjà uppercase
+                            *m.object_type_mut() = "Computer".to_string();
+                            vec_members2.push(m);
+                        }
+                    }
+
                     self.allowed_to_delegate = vec_members2;
                 }
                 "lastLogon" => {
