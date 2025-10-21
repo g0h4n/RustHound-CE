@@ -18,6 +18,7 @@ use crate::ldap::prepare_ldap_dc;
 use crate::utils::format::domain_to_dc;
 use crate::enums::regex::COMMON_RE1;
 use indicatif::ProgressBar;
+use log::trace;
 
 /// Function to add default groups
 /// <https://github.com/fox-it/BloodHound.py/blob/645082e3462c93f31b571db945cde1fd7b837fb9/bloodhound/enumeration/memberships.py#L411>
@@ -246,9 +247,6 @@ pub fn add_childobjects_members<T: LdapObject>(
     let total = vec_replaced.len();
     let pb = ProgressBar::new(total as u64);
 
-    // Precompute "null" to avoid repeated allocations
-    let null: String = "NULL".to_string();
-
     // Iterate over the objects
     for (count, object) in vec_replaced.iter_mut().enumerate() {
         // Update progress bar periodically
@@ -262,7 +260,7 @@ pub fn add_childobjects_members<T: LdapObject>(
             .iter()
             .find(|(_, v)| **v == sid)
             .map(|(k, _)| k)
-            .unwrap_or(&null);
+            .unwrap_or(&sid);
         let name = get_name_from_full_distinguishedname(dn);
         let _otype = sid_type.get(&sid).unwrap();
 
@@ -282,7 +280,7 @@ pub fn add_childobjects_members<T: LdapObject>(
                 {
                     let mut member = Member::new();
                     *member.object_identifier_mut() = value_sid.clone();
-                    *member.object_type_mut() = sid_type.get(value_sid).unwrap_or(&null).to_string();
+                    *member.object_type_mut() = sid_type.get(value_sid).unwrap_or(&value_sid).to_string();
                     if !member.object_identifier().is_empty() {
                         return Some(member);
                     }
@@ -829,6 +827,7 @@ pub fn add_contained_by_for<T: LdapObject>(
 pub fn get_name_from_full_distinguishedname(dn_object: &str) -> String {
     // Example:
     // dn_object = CN=G0H4N,CN=USERS,DC=ESSOS,DC=LOCAL
+    trace!("get_name_from_full_distinguishedname() {:?}",&dn_object);
     let split1 = dn_object.split(",");
     let vec1 = split1.collect::<Vec<&str>>();
     let split2 = vec1[0].split("=");

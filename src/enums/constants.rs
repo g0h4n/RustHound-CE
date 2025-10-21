@@ -19,6 +19,7 @@ pub const GET_CHANGES: &str = "1131f6aa-9c07-11d1-f79f-00c04fc2dcd2";
 pub const GET_CHANGES_ALL: &str = "1131f6ad-9c07-11d1-f79f-00c04fc2dcd2";
 pub const GET_CHANGES_IN_FILTERED_SET: &str = "89e95b76-444d-4c62-991a-0facbeda640c";
 pub const WRITE_MEMBER: &str = "bf9679c0-0de6-11d0-a285-00aa003049e2";
+// pub const USER_CHANGE_PASSWORD: &str = "ab721a53-1e2f-11d0-9819-00aa0040529b";
 pub const USER_FORCE_CHANGE_PASSWORD: &str = "00299570-246d-11d0-a768-00aa006e0529";
 pub const ALLOWED_TO_ACT: &str = "3f78c3e5-f79a-46bd-a0b8-9d18116ddc79";
 pub const USER_ACCOUNT_RESTRICTIONS_SET: &str = "4c164200-20c0-11d0-a768-00aa006e0529";

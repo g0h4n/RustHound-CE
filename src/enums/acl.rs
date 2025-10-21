@@ -457,6 +457,17 @@ fn ace_maker<T: LdapObject>(
                         "".to_string(),
                     ));
                 }
+                // if (entry_type == "User")
+                //     && has_extended_right(&ace, USER_CHANGE_PASSWORD)
+                // {
+                //     relations.push(AceTemplate::new(
+                //         sid.to_owned(),
+                //         "".to_string(),
+                //         "ForceChangePassword".to_string(), // Maybe need to be change if is not "Force"
+                //         is_inherited,
+                //         "".to_string(),
+                //     ));
+                // }
                 if (entry_type == "User")
                     && has_extended_right(&ace, USER_FORCE_CHANGE_PASSWORD)
                 {
@@ -656,10 +667,10 @@ fn can_write_property(
 
     let typea = AceFormat::get_object_type(&ace.data).unwrap_or_default();
 
-    trace!("AceFormat::get_object_type {}",decode_guid_le(&typea.to_le_bytes().as_ref()));
-    trace!("bin_property_guid_string {}", bin_property.to_uppercase());
+    trace!("AceFormat::get_object_type {}", decode_guid_le(&typea.to_le_bytes().as_ref()).to_lowercase());
+    trace!("bin_property_guid_string {}", bin_property.to_lowercase());
 
-    if bin_to_string(&typea.to_le_bytes().as_ref()) == bin_property.to_uppercase()
+    if bin_to_string(&typea.to_le_bytes().as_ref()).to_lowercase() == bin_property.to_lowercase()
     {
         trace!("MATCHED AceFormat::get_object_type with bin_property!");
         return true;
@@ -696,10 +707,10 @@ fn has_extended_right(ace: &Ace, bin_right_guid: &str) -> bool {
 
     let typea = AceFormat::get_object_type(&ace.data).unwrap_or_default();
 
-    trace!("AceFormat::get_object_type {}",decode_guid_le(&typea.to_le_bytes().as_ref()).to_uppercase());
-    trace!("bin_right_guid {}", bin_right_guid.to_uppercase());
+    trace!("AceFormat::get_object_type {}",decode_guid_le(&typea.to_le_bytes().as_ref()).to_lowercase());
+    trace!("bin_right_guid {}", bin_right_guid.to_lowercase());
 
-    if decode_guid_le(&typea.to_le_bytes().as_ref()) == bin_right_guid.to_uppercase() {
+    if decode_guid_le(&typea.to_le_bytes().as_ref()).to_lowercase() == bin_right_guid.to_lowercase() {
         trace!("MATCHED AceFormat::get_object_type with bin_right_guid!");
         return true;
     }

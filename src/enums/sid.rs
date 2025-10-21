@@ -87,7 +87,7 @@ pub fn bin_to_string(raw_guid: &[u8]) -> String
         &hex_push(&rev(&raw_guid[0..6]))
     );
 
-    str_guid  
+    str_guid
 }
 
 /// Function to decode GUID from binary to string format with correct little-endian handling
