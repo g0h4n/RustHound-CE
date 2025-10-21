@@ -10,6 +10,7 @@
 //! let search = ldap_search(...)
 //! ```
 
+use crate::args::LdapAuth;
 // use crate::errors::Result;
 use crate::banner::progress_bar;
 use crate::storage::Storage;
@@ -35,15 +36,18 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     domain: &str,
     ldapfqdn: &str,
     username: Option<&str>,
-    password: Option<&str>,
+    // password: Option<&str>,
+    auth: Option<&crate::args::LdapAuth>,
     kerberos: bool,
     ldapfilter: &str,
     storage: &mut S,
 ) -> Result<usize, Box<dyn Error>> {
     // Construct LDAP args
     let ldap_args = ldap_constructor(
-        ldaps, ip, port, domain, ldapfqdn, username, password, kerberos,
+        ldaps, ip, port, domain, ldapfqdn, username, auth, kerberos,
     )?;
+
+
 
     // LDAP connection
     let consettings = LdapConnSettings::new()
@@ -54,10 +58,16 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
 
     if !kerberos {
         debug!("Trying to connect with simple_bind() function (username:password)");
-        let res = ldap
-            .simple_bind(&ldap_args.s_username, &ldap_args.s_password)
-            .await?
-            .success();
+        let res = match ldap_args.s_auth {
+            LdapAuth::Password(ref password) => ldap.simple_bind(&ldap_args.s_username, password).await?.success(),
+            LdapAuth::Ntlm(ref ntlm_hash) => {
+                // TODO: refactor `sasl_ntlmv2_bind_with_hash` to handle username@domain
+                // or refactor `ldap_constructor`
+                let (username, domain) = ldap_args._s_email.split_once('@').unwrap_or((&ldap_args.s_username, "not set"));
+
+                ldap.sasl_ntlmv2_bind_with_hash(username, domain, ntlm_hash.as_bytes()).await?.success()
+            },
+        };
         match res {
             Ok(_res) => {
                 info!(
@@ -211,7 +221,8 @@ struct LdapArgs {
     _s_dc: Vec<String>,
     _s_email: String,
     s_username: String,
-    s_password: String,
+    // s_password: String,
+    s_auth: crate::args::LdapAuth,
 }
 
 /// Function to prepare LDAP arguments.
@@ -222,7 +233,8 @@ fn ldap_constructor(
     domain: &str,
     ldapfqdn: &str,
     username: Option<&str>,
-    password: Option<&str>,
+    // password: Option<&str>,
+    auth: Option<&crate::args::LdapAuth>,
     kerberos: bool,
 ) -> Result<LdapArgs, Box<dyn Error>> {
     // Prepare ldap url
@@ -256,7 +268,7 @@ fn ldap_constructor(
     let mut s_email: String = "".to_owned();
     if !_s_username.contains("@") {
         s_email.push_str(&_s_username.to_string());
-        s_email.push_str("@");
+        s_email.push('@');
         s_email.push_str(domain);
         _s_username = s_email.to_string();
     } else {
@@ -264,21 +276,30 @@ fn ldap_constructor(
     }
 
     // Password prompt
-    let mut _s_password: String = String::new();
+    // let mut _s_password: String = String::new();
+    // if !_s_username.contains("not set") && !kerberos {
+    //     _s_password = match password {
+    //         Some(p) => p.to_owned(),
+    //         None => rpassword::prompt_password("Password: ").unwrap_or("not set".to_string()),
+    //     };
+    // } else {
+    //     _s_password = password.unwrap_or("not set").to_owned();
+    // }
+    let mut _s_auth = LdapAuth::Password("not set".to_string());
+
     if !_s_username.contains("not set") && !kerberos {
-        _s_password = match password {
-            Some(p) => p.to_owned(),
-            None => rpassword::prompt_password("Password: ").unwrap_or("not set".to_string()),
+        _s_auth = match auth {
+            Some(LdapAuth::Password(p)) => LdapAuth::Password(p.to_owned()),
+            Some(LdapAuth::Ntlm(h)) => LdapAuth::Ntlm(h.to_owned()),
+            None => LdapAuth::Password(rpassword::prompt_password("Password: ").unwrap_or("not set".to_string())),
         };
     } else {
-        _s_password = password.unwrap_or("not set").to_owned();
+        _s_auth = auth.unwrap_or(&LdapAuth::Password("not set".to_string())).to_owned();
     }
 
+
     // Print infos if verbose mod is set
-    debug!("IP: {}", match ip {
-        Some(ip) => ip,
-        None => "not set"
-    });
+    debug!("IP: {}", ip.unwrap_or("not set"));
     debug!("PORT: {}", match port {
         Some(p) => {
             p.to_string()
@@ -290,7 +311,7 @@ fn ldap_constructor(
     debug!("Domain: {}", domain);
     debug!("Username: {}", _s_username);
     debug!("Email: {}", s_email.to_lowercase());
-    debug!("Password: {}", _s_password);
+    debug!("Password: {:?}", _s_auth);
     debug!("DC: {:?}", s_dc);
     debug!("Kerberos: {:?}", kerberos);
 
@@ -299,7 +320,8 @@ fn ldap_constructor(
         _s_dc: s_dc,
         _s_email: s_email.to_string().to_lowercase(),
         s_username: s_email.to_string().to_lowercase(),
-        s_password: _s_password.to_string(),
+        // s_password: _s_password.to_string(),
+        s_auth: _s_auth,
     })
 }
 
