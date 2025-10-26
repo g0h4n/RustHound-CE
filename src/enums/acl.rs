@@ -267,7 +267,7 @@ fn ace_maker<T: LdapObject>(
             // https://github.com/fox-it/BloodHound.py/blob/645082e3462c93f31b571db945cde1fd7b837fb9/bloodhound/enumeration/acls.py#L126
             if (MaskFlags::ADS_RIGHT_DS_WRITE_PROP.bits() | mask) == mask {
 
-                if ((entry_type == "User") || (entry_type == "Group") || (entry_type == "Computer"))
+                if ((entry_type == "User") || (entry_type == "Group") || (entry_type == "Computer") || (entry_type == "Gpo") || (entry_type == "OU"))
                     && !(&flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT)
                 {
                     relations.push(AceTemplate::new(
@@ -383,7 +383,9 @@ fn ace_maker<T: LdapObject>(
                     && (&flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT)
                     && object.get_haslaps().to_owned()
                 {
-                    if &ace_guid == OBJECTTYPE_GUID_HASHMAP.get("ms-mcs-admpwd").unwrap_or(&String::from("GUID-NOT-FOUND"))
+                    if &ace_guid == OBJECTTYPE_GUID_HASHMAP.get("ms-mcs-admpwd").unwrap_or(&String::from("GUID-NOT-FOUND")) 
+                        || &ace_guid == OBJECTTYPE_GUID_HASHMAP.get("ms-laps-password").unwrap_or(&String::from("GUID-NOT-FOUND"))
+                        || &ace_guid == OBJECTTYPE_GUID_HASHMAP.get("ms-laps-encryptedpassword").unwrap_or(&String::from("GUID-NOT-FOUND"))
                     {
                         relations.push(AceTemplate::new(
                             sid.to_owned(),
@@ -468,7 +470,7 @@ fn ace_maker<T: LdapObject>(
                 //         "".to_string(),
                 //     ));
                 // }
-                if (entry_type == "User")
+                if ["User","Computer"].contains(&entry_type)
                     && has_extended_right(&ace, USER_FORCE_CHANGE_PASSWORD)
                 {
                     relations.push(AceTemplate::new(
