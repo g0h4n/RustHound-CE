@@ -470,7 +470,7 @@ fn ace_maker<T: LdapObject>(
                 //         "".to_string(),
                 //     ));
                 // }
-                if ["User","Computer"].contains(&entry_type)
+                if ["User","Computer","Group"].contains(&entry_type)
                     && has_extended_right(&ace, USER_FORCE_CHANGE_PASSWORD)
                 {
                     relations.push(AceTemplate::new(
@@ -727,8 +727,9 @@ fn ace_applies(ace_guid: &String, entry_type: &str) -> bool {
     // Note that this function assumes you already verified that InheritedObjectType is set (via the flag).
     // If this is not set, the ACE applies to all object types.
     trace!("ACE GUID: {}", &ace_guid);
-    trace!("OBJECTTYPE_GUID_HASHMAP: {}",OBJECTTYPE_GUID_HASHMAP.get(entry_type).unwrap_or(&String::from("GUID-NOT-FOUND")));
-    ace_guid == OBJECTTYPE_GUID_HASHMAP.get(entry_type).unwrap_or(&String::from("GUID-NOT-FOUND"))
+    let entry_type_lower = entry_type.to_lowercase();
+    trace!("OBJECTTYPE_GUID_HASHMAP: {}",OBJECTTYPE_GUID_HASHMAP.get(&entry_type_lower).unwrap_or(&String::from("GUID-NOT-FOUND")));
+    ace_guid == OBJECTTYPE_GUID_HASHMAP.get(&entry_type_lower).unwrap_or(&String::from("GUID-NOT-FOUND"))
 }
 
 /// Function to parse GMSA DACL which states which users (or groups) can read the password
