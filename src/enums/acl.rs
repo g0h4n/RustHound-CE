@@ -202,7 +202,8 @@ fn ace_maker<T: LdapObject>(
                 || ((MaskFlags::GENERIC_WRITE.bits() | mask) == mask)
             {
                 trace!("ACE MASK contain: GENERIC_ALL or WRITE_DACL or WRITE_OWNER or GENERIC_WRITE");
-                if &flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT && !ace_applies(&ace_guid, entry_type) {
+                let inherited_ace_guid = decode_guid_le(&inherited_object_type.to_le_bytes().to_vec()).to_lowercase();
+                if &flags & ACE_INHERITED_OBJECT_TYPE_PRESENT == ACE_INHERITED_OBJECT_TYPE_PRESENT && !ace_applies(&inherited_ace_guid, entry_type) {
                     continue;
                 }
                 if (MaskFlags::GENERIC_ALL.bits() | mask) == mask 
@@ -470,7 +471,7 @@ fn ace_maker<T: LdapObject>(
                 //         "".to_string(),
                 //     ));
                 // }
-                if ["User","Computer"].contains(&entry_type)
+                if ["User","Computer","Group"].contains(&entry_type)
                     && has_extended_right(&ace, USER_FORCE_CHANGE_PASSWORD)
                 {
                     relations.push(AceTemplate::new(
@@ -669,10 +670,11 @@ fn can_write_property(
 
     let typea = AceFormat::get_object_type(&ace.data).unwrap_or_default();
 
-    trace!("AceFormat::get_object_type {}", decode_guid_le(&typea.to_le_bytes().as_ref()).to_lowercase());
+    let object_type_guid = decode_guid_le(&typea.to_le_bytes().as_ref()).to_lowercase();
+    trace!("AceFormat::get_object_type {}", object_type_guid);
     trace!("bin_property_guid_string {}", bin_property.to_lowercase());
 
-    if bin_to_string(&typea.to_le_bytes().as_ref()).to_lowercase() == bin_property.to_lowercase()
+    if object_type_guid == bin_property.to_lowercase()
     {
         trace!("MATCHED AceFormat::get_object_type with bin_property!");
         return true;
@@ -727,8 +729,9 @@ fn ace_applies(ace_guid: &String, entry_type: &str) -> bool {
     // Note that this function assumes you already verified that InheritedObjectType is set (via the flag).
     // If this is not set, the ACE applies to all object types.
     trace!("ACE GUID: {}", &ace_guid);
-    trace!("OBJECTTYPE_GUID_HASHMAP: {}",OBJECTTYPE_GUID_HASHMAP.get(entry_type).unwrap_or(&String::from("GUID-NOT-FOUND")));
-    ace_guid == OBJECTTYPE_GUID_HASHMAP.get(entry_type).unwrap_or(&String::from("GUID-NOT-FOUND"))
+    let entry_type_lower = entry_type.to_lowercase();
+    trace!("OBJECTTYPE_GUID_HASHMAP: {}",OBJECTTYPE_GUID_HASHMAP.get(&entry_type_lower).unwrap_or(&String::from("GUID-NOT-FOUND")));
+    ace_guid == OBJECTTYPE_GUID_HASHMAP.get(&entry_type_lower).unwrap_or(&String::from("GUID-NOT-FOUND"))
 }
 
 /// Function to parse GMSA DACL which states which users (or groups) can read the password
