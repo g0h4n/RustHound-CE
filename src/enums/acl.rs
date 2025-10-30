@@ -8,7 +8,7 @@ use crate::{enums::decode_guid_le, objects::{
 }};
 use crate::enums::constants::*;
 use crate::enums::secdesc::*;
-use crate::enums::sid::{bin_to_string, sid_maker};
+use crate::enums::sid::sid_maker;
 use bitflags::bitflags;
 use log::{error, trace};
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.4.2
+
+### Date
+`2025/10/30`
+
+### Summary
+
+Fix issue [#18](https://github.com/g0h4n/RustHound-CE/issues/18) regarding ACL issues. [acl.rs](https://github.com/g0h4n/RustHound-CE/blob/main/src/enums/acl.rs) 
+Thanks a lot for [0xdf223](https://github.com/0xdf223) for your contribution! More information about ACL fixing directly from the pull request [#19](https://github.com/g0h4n/RustHound-CE/pull/19)
+
+Issues Fixed:
+
+- `AddMember` rights on groups were not being detected;
+- `ForceChangePassword` rights were missing for inherited ACEs;
+- `WriteSPN` and other property-specific write rights were not captured;
+- Any ACEs with property GUIDs when inherited object type filtering was present.
+
 ## v2.4.1
 
 ### Date
