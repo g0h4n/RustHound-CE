@@ -72,4 +72,4 @@ More information and examples with how to compile RustHound-CE or how to use Rus
 [![](https://github.com/spyr0-sec.png?size=50)](https://github.com/spyr0-sec)
 [![](https://github.com/z-jxy.png?size=50)](https://github.com/z-jxy)
 [![](https://github.com/0xdf223.png?size=50)](https://github.com/0xdf223)
-[![](https://pbs.twimg.com/profile_images/859140652617142272/z79HkNvx_400x400.jpg) { width: 50px; }](https://github.com/IppSec)
+[<img src="https://pbs.twimg.com/profile_images/859140652617142272/z79HkNvx_400x400.jpg" alt="IppSec" width="50"/>](https://github.com/IppSec)
