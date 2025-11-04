@@ -127,7 +127,10 @@ pub fn parse_result_type(
                     sid_type,
                 )?;
                 domain_sid = domain_sid_from_domain;
-                vec_domains.push(domain_object);
+                // Only add domains with valid ObjectIdentifier (excludes DomainDnsZones, ForestDnsZones, etc.)
+                if !domain_object.object_identifier().is_empty() {
+                    vec_domains.push(domain_object);
+                }
             }
             Type::Gpo => {
                 let mut  gpo = Gpo::new();
