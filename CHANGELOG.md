@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.4.3
+
+### Date
+`2025/11/04`
+
+### Summary
+
+Fix issue [#15](https://github.com/g0h4n/RustHound-CE/issues/15) by removing object with no Object Identifier.
+Thanks a lot for [IppSec](https://github.com/IppSec) for your contribution! More information about the fix directly from the pull request [#20](https://github.com/g0h4n/RustHound-CE/pull/20)
+
 ## v2.4.2
 
 ### Date

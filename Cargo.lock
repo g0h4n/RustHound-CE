@@ -1522,7 +1522,7 @@ checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rusthound-ce"
-version = "2.4.2"
+version = "2.4.3"
 dependencies = [
  "bincode",
  "bitflags",
