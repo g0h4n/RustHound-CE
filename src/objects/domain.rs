@@ -51,6 +51,9 @@ impl Domain {
     pub fn properties_mut(&mut self) -> &mut DomainProperties {
         &mut self.properties
     }
+    pub fn object_identifier(&self) -> &String {
+        &self.object_identifier
+    }
     pub fn object_identifier_mut(&mut self) -> &mut String {
         &mut self.object_identifier
     }
