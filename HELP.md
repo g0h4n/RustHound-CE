@@ -78,7 +78,7 @@ docker run --rm -v $PWD:/usr/src/rusthound-ce rusthound-ce macos
 
 You will need to install Rust on your system.
 
-[https://www.rust-lang.org/fr/tools/install](https://www.rust-lang.org/fr/tools/install)
+[https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install)
 
 RustHound supports Kerberos and GSSAPI. Therefore, it requires Clang and its development libraries, as well as the Kerberos development libraries. On Debian and Ubuntu, this means **clang-N**, **libclang-N-dev**, and **libkrb5-dev**.
 
