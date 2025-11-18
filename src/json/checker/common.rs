@@ -233,11 +233,9 @@ pub fn add_default_users(
     *ntauthority_user.properties_mut().name_mut() = name;
     *ntauthority_user.object_identifier_mut() = sid;
 
-    // *ntauthority_user.properties_mut().domainsid_mut() = vec_users[0].properties().domainsid().to_string();
     if let Some(first_user) = vec_users.get(0) {
         *ntauthority_user.properties_mut().domainsid_mut() = first_user.properties().domainsid().to_string();
     } else {
-        // Gérer le cas vide : ignorer, mettre une valeur par défaut, etc.
         error!("vec_users is empty, skipping domain SID assignment");
     }
 
