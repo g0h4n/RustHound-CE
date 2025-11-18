@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.4
+
+### Date
+`2025/11/18`
+
+### Summary
+
+Fix issues where group imports contained members with null ObjectIdentifiers, and improve shortest-path resolution from users to Domain Admins involving accounts such as `ADCSESC1`, `ADCSESC4`, etc. 
+
 ## v2.4.3
 
 ### Date
