@@ -8,7 +8,7 @@
   - [x] LDAP (389) :white_check_mark:
   - [x] LDAPS (636) :white_check_mark:
   - [x] `BIND` :white_check_mark:
-  - [ ] `NTLM` :red_circle:
+  - [x] `NTLM` :white_check_mark: (branch: [feat/ntlm-support](https://github.com/g0h4n/RustHound-CE/tree/feat/ntlm-support))
   - [x] `Kerberos` :white_check_mark:
   - [x] Prompt for password :white_check_mark:
 
@@ -32,21 +32,28 @@
 - [x] Retreive LAPS password if your user can read them **automatic** :white_check_mark:
 - [ ] Retreive LAPSv2 password if your user can read them **automatic** :red_circle:
 - [x] Resolve FQDN computers found to IP address **--fqdn-resolver** :white_check_mark:
-- [ ] Kerberos attack module (ASREPROASTING and KERBEROASTING) **--attack-kerberos** :red_circle:
-- [ ] Retrieve datas from trusted domains **--follow-trust**  :red_circle:
+- ~~[ ] Kerberos attack module (ASREPROASTING and KERBEROASTING) **--attack-kerberos** :red_circle:~~
+- ~~[ ] Retrieve datas from trusted domains **--follow-trust**  :red_circle:~~
 
 ## List of attributes
 
 - **BloodHound-CE version**
     - [ ] **All objects**
-        - [x] `Properties`:`isaclprotected` :white_check_mark: (this value will replace `IsACLProtected`)
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:(this value will replace `IsACLProtected`)
         - [ ] `Aces`:`InheritanceHash` :red_circle:
+        - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
+        - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 
     - [x] **Domain** 
         - [x] `Properties`:`domain` :white_check_mark:
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
@@ -89,6 +96,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`haslaps` :white_check_mark:
@@ -131,6 +141,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
@@ -177,6 +190,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
@@ -194,6 +210,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
@@ -217,6 +236,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
@@ -233,6 +255,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `ChildObjects` :white_check_mark:
         - [x] `Aces` :white_check_mark:
@@ -246,6 +271,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
@@ -263,6 +291,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [x] `Properties`:`certthumbprints` :white_check_mark:
@@ -277,6 +308,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [ ] `Properties`:`crosscertificatepair` :red_circle: What value should be added to the output? (x509 cert)
@@ -297,6 +331,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [x] `Properties`:`certthumbprint` :white_check_mark:
@@ -315,6 +352,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [ ] `Properties`:`flags` :red_circle:
@@ -336,6 +376,7 @@
         - [ ] `CARegistryData`:`IsUserSpecifiesSanEnabled` :red_circle: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38)
         - [ ] `CARegistryData`:`RoleSeparationEnabled` :red_circle:
         - [x] `EnabledCertTemplates` :white_check_mark:
+        - [ ] `HttpEnrollmentEndpoints` :red_circle:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
         - [x] `IsDeleted` :white_check_mark:
@@ -347,6 +388,9 @@
         - [x] `Properties`:`name` :white_check_mark:
         - [x] `Properties`:`distinguishedname` :white_check_mark:
         - [x] `Properties`:`domainsid` :white_check_mark:
+        - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+        - [ ] `Properties`:`isaclprotected` :red_circle:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [x] `Properties`:`validityperiod` :white_check_mark:
@@ -367,6 +411,12 @@
         - [x] `Properties`:`issuancepolicies` :white_check_mark:
         - [x] `Properties`:`effectiveekus` :white_check_mark:
         - [x] `Properties`:`authenticationenabled` :white_check_mark:
+        - [ ] `Properties`:`subjectaltrequiredns` :red_circle:
+        - [ ] `Properties`:`subjectaltrequiredomaindns` :red_circle:
+        - [ ] `Properties`:`subjectaltrequireemail` :red_circle:
+        - [ ] `Properties`:`subjectaltrequirespn` :red_circle:
+        - [ ] `Properties`:`subjectrequireemail` :red_circle:
+        - [ ] `Properties`:`schannelauthenticationenabled` :red_circle:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
         - [x] `IsDeleted` :white_check_mark:
