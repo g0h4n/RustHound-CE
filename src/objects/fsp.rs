@@ -41,6 +41,7 @@ impl Fsp {
         domain: &str,
         dn_sid: &mut HashMap<String, String>,
         sid_type: &mut HashMap<String, String>,
+        domain_sid: &str,
     ) -> Result<(), Box<dyn Error>> {
         let result_dn: String = result.dn.to_uppercase();
         let result_attrs: HashMap<String, Vec<String>> = result.attrs;
@@ -61,6 +62,7 @@ impl Fsp {
         // Change all values...
         self.properties.domain = domain.to_uppercase();
         self.properties.distinguishedname = result_dn;    
+        self.properties.domainsid = domain_sid.to_string();
 
         #[allow(unused_assignments)]
         let mut sid: String = "".to_owned();

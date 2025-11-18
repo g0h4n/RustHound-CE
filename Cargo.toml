@@ -1,12 +1,12 @@
 [package]
 authors = ["g0h4n <g0h4n_0@protonmail.com>"]
 name = "rusthound-ce"
-description = "Active Directory data collector for Bloodhound Community Edition written in rust."
+description = "Beta: Active Directory data collector for Bloodhound Community Edition written in rust."
 keywords = ["bloodhound", "pentest", "ldap", "tokio", "async"]
 repository = "https://github.com/g0h4n/RustHound-CE"
 homepage = "https://github.com/g0h4n/RustHound-CE"
 documentation = "https://docs.rs/rusthound-ce/"
-version = "2.4.1"
+version = "2.4.4"
 edition = "2021"
 license = "MIT"
 readme = "README.md"

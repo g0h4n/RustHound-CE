@@ -160,7 +160,7 @@ pub fn parse_result_type_from_source(
             }
             Type::ForeignSecurityPrincipal => {
                 let mut security_principal = Fsp::new();
-                security_principal.parse(entry, domain, dn_sid, sid_type)?;
+                security_principal.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
                 results.fsps.push(security_principal);
             }
             Type::Container => {

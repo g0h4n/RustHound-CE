@@ -613,7 +613,7 @@ fn ace_maker<T: LdapObject>(
                 }
             }
     
-            if ["EnterpriseCA","RootCA"].contains(&entry_type)
+            if ["EnterpriseCA"].contains(&entry_type) // "RootCA"
             && (MaskFlags::MANAGE_CA.bits() | mask) == mask
             {
                 relations.push(AceTemplate::new(

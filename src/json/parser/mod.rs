@@ -147,6 +147,7 @@ pub fn parse_result_type(
                     domain,
                     dn_sid,
                     sid_type,
+                    &domain_sid
                 )?;
                 vec_fsps.push(security_principal);
             }

@@ -78,10 +78,6 @@ impl Group {
             trace!("  {key:?}:{value:?}");
         }
 
-        // Some needed vectors.
-        let mut vec_members: Vec<Member> = Vec::new();
-        let mut member_template = Member::new();
-
         // Change all values...
         self.properties.domain = domain.to_uppercase();
         self.properties.distinguishedname = result_dn;
@@ -111,13 +107,23 @@ impl Group {
                 }
                 "member" => {
                     if !value.is_empty() {
+                        let mut _vec_members: Vec<Member> = Vec::new();
+
                         for member in value {
-                            *member_template.object_identifier_mut() = member.to_owned().to_uppercase();
-                            if member_template.object_identifier() != "SID" {
-                                vec_members.push(member_template.to_owned());
+                            let _member = member.trim();
+                            if _member.is_empty() {
+                                continue;
                             }
+                            if _member.eq_ignore_ascii_case("SID") {
+                                continue;
+                            }
+
+                            let mut m = Member::new();
+                            *m.object_identifier_mut() = _member.to_uppercase();
+                            _vec_members.push(m);
                         }
-                        self.members = vec_members.to_owned();
+                        
+                        self.members = _vec_members;
                     }
                 }
                 "objectSid" => {
@@ -318,6 +324,12 @@ impl GroupProperties {
     // Mutable access.
     pub fn name_mut(&mut self) -> &mut String {
         &mut self.name
+    }
+    pub fn domain_mut(&mut self) -> &mut String {
+        &mut self.domain
+    }
+    pub fn domainsid_mut(&mut self) -> &mut String {
+        &mut self.domainsid
     }
     pub fn highvalue_mut(&mut self) -> &mut bool {
         &mut self.highvalue

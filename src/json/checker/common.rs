@@ -16,8 +16,9 @@ use crate::objects::{
 //use log::{info,debug,trace};
 use crate::ldap::prepare_ldap_dc;
 use crate::utils::format::domain_to_dc;
-use crate::enums::regex::COMMON_RE1;
+use crate::enums::regex::{COMMON_RE1,DOMAIN_SID_RE1};
 use indicatif::ProgressBar;
+use log::{error,trace};
 
 /// Function to add default groups
 /// <https://github.com/fox-it/BloodHound.py/blob/645082e3462c93f31b571db945cde1fd7b837fb9/bloodhound/enumeration/memberships.py#L411>
@@ -26,7 +27,9 @@ pub fn add_default_groups(
     vec_computers: &[Computer],
     domain: String
 ) -> Result<(), Box<dyn Error>> {
+    let mut member_sid = "".to_owned();
     let mut domain_sid = "".to_owned();
+
     let mut template_member = Member::new();
     *template_member.object_type_mut() = "Computer".to_string();
 
@@ -54,7 +57,13 @@ pub fn add_default_groups(
             *template_member.object_identifier_mut() = computer.object_identifier().clone();
             vec_members.push(template_member.clone());
             if let Some(capture) = COMMON_RE1.captures(computer.object_identifier()) {
-                domain_sid = capture.get(0).map(|m| m.as_str().to_string()).unwrap_or_default();
+
+                member_sid = capture.get(0).map(|m| m.as_str().to_string()).unwrap_or_default();
+
+                if let Some(capture) = DOMAIN_SID_RE1.captures(computer.object_identifier()) {
+                    domain_sid = capture.get(0).unwrap().as_str().to_string();
+                }
+
             }
         }
     }
@@ -62,11 +71,13 @@ pub fn add_default_groups(
     *edc_group.object_identifier_mut() = sid;
     *edc_group.properties_mut().name_mut() = name;
     *edc_group.members_mut() = vec_members;
+    *edc_group.properties_mut().domain_mut() = domain.to_owned();
+    *edc_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(edc_group);
 
     // ACCOUNT OPERATORS
     let mut account_operators_group = Group::new();
-    sid = domain.to_uppercase();
+    sid = domain.to_owned().to_uppercase();
     sid.push_str("-S-1-5-32-548");
     let mut name = "ACCOUNT OPERATORS@".to_owned();
     name.push_str(&domain.to_uppercase());
@@ -74,6 +85,8 @@ pub fn add_default_groups(
     *account_operators_group.object_identifier_mut() = sid;
     *account_operators_group.properties_mut().name_mut() = name;
     *account_operators_group.properties_mut().highvalue_mut() = true;
+    *account_operators_group.properties_mut().domain_mut() = domain.to_owned();
+    *account_operators_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(account_operators_group);
 
     // WINDOWS AUTHORIZATION ACCESS GROUP
@@ -84,6 +97,7 @@ pub fn add_default_groups(
     name.push_str(&domain.to_uppercase());
     *waag_group.object_identifier_mut() = sid;
     *waag_group.properties_mut().name_mut() = name;
+    *waag_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(waag_group);
 
     // EVERYONE
@@ -94,13 +108,13 @@ pub fn add_default_groups(
     name.push_str(&domain.to_uppercase());
 
     let mut vec_everyone_members: Vec<Member> = Vec::new();
-    let mut member_id = domain_sid.to_owned();
+    let mut member_id = member_sid.to_owned();
     member_id.push_str("-515");
     *template_member.object_identifier_mut() = member_id.to_owned();
     *template_member.object_type_mut() = "Group".to_string();
     vec_everyone_members.push(template_member.to_owned());
 
-    member_id = domain_sid.to_owned();
+    member_id = member_sid.to_owned();
     member_id.push_str("-513");
     *template_member.object_identifier_mut() = member_id.to_owned();
     *template_member.object_type_mut() = "Group".to_string();
@@ -108,6 +122,8 @@ pub fn add_default_groups(
 
     *everyone_group.object_identifier_mut() = sid;
     *everyone_group.properties_mut().name_mut() = name;
+    *everyone_group.properties_mut().domain_mut() = domain.to_owned();
+    *everyone_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     *everyone_group.members_mut() = vec_everyone_members;
     vec_groups.push(everyone_group);
 
@@ -119,13 +135,13 @@ pub fn add_default_groups(
     name.push_str(&domain.to_uppercase());
 
     let mut vec_auth_users_members: Vec<Member> = Vec::new();
-    member_id = domain_sid.to_owned();
+    member_id = member_sid.to_owned();
     member_id.push_str("-515");
     *template_member.object_identifier_mut() = member_id.to_owned();
     *template_member.object_type_mut() = "Group".to_string();
     vec_auth_users_members.push(template_member.to_owned());
 
-    member_id = domain_sid.to_owned();
+    member_id = member_sid.to_owned();
     member_id.push_str("-513");
     *template_member.object_identifier_mut() = member_id.to_owned();
     *template_member.object_type_mut() = "Group".to_string();
@@ -133,7 +149,9 @@ pub fn add_default_groups(
 
     *auth_users_group.object_identifier_mut() = sid;
     *auth_users_group.properties_mut().name_mut() = name;
+    *auth_users_group.properties_mut().domain_mut() = domain.to_owned();
     *auth_users_group.members_mut() = vec_auth_users_members;
+    *auth_users_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(auth_users_group);
 
     // ADMINISTRATORS
@@ -146,6 +164,8 @@ pub fn add_default_groups(
     *administrators_group.object_identifier_mut() = sid;
     *administrators_group.properties_mut().name_mut() = name;
     *administrators_group.properties_mut().highvalue_mut() = true;
+    *administrators_group.properties_mut().domain_mut() = domain.to_owned();
+    *administrators_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(administrators_group);
 
     // PRE-WINDOWS 2000 COMPATIBLE ACCESS
@@ -157,6 +177,8 @@ pub fn add_default_groups(
             
     *pw2000ca_group.object_identifier_mut() = sid;
     *pw2000ca_group.properties_mut().name_mut() = name;
+    *pw2000ca_group.properties_mut().domain_mut() = domain.to_owned();
+    *pw2000ca_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(pw2000ca_group);    
 
     // INTERACTIVE
@@ -168,6 +190,8 @@ pub fn add_default_groups(
 
     *interactive_group.object_identifier_mut() = sid;
     *interactive_group.properties_mut().name_mut() = name;
+    *interactive_group.properties_mut().domain_mut() = domain.to_owned();
+    *interactive_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(interactive_group);
 
     // PRINT OPERATORS
@@ -180,6 +204,8 @@ pub fn add_default_groups(
     *print_operators_group.object_identifier_mut() = sid;
     *print_operators_group.properties_mut().name_mut() = name;
     *print_operators_group.properties_mut().highvalue_mut() = true;
+    *print_operators_group.properties_mut().domain_mut() = domain.to_owned();
+    *print_operators_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(print_operators_group); 
 
     // TERMINAL SERVER LICENSE SERVERS
@@ -191,6 +217,8 @@ pub fn add_default_groups(
             
     *tsls_group.object_identifier_mut() = sid;
     *tsls_group.properties_mut().name_mut() = name;
+    *tsls_group.properties_mut().domain_mut() = domain.to_owned();
+    *tsls_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(tsls_group); 
 
     // INCOMING FOREST TRUST BUILDERS
@@ -202,6 +230,8 @@ pub fn add_default_groups(
             
     *iftb_group.object_identifier_mut() = sid;
     *iftb_group.properties_mut().name_mut() = name;
+    *iftb_group.properties_mut().domain_mut() = domain.to_owned();
+    *iftb_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(iftb_group); 
  
     // THIS ORGANIZATION 
@@ -213,6 +243,8 @@ pub fn add_default_groups(
             
     *this_organization_group.object_identifier_mut() = sid;
     *this_organization_group.properties_mut().name_mut() = name;
+    *this_organization_group.properties_mut().domain_mut() = domain.to_owned();
+    *this_organization_group.properties_mut().domainsid_mut() = domain_sid.to_owned();
     vec_groups.push(this_organization_group);
     Ok(())
 }
@@ -231,7 +263,13 @@ pub fn add_default_users(
     name.push_str(&domain.to_uppercase());
     *ntauthority_user.properties_mut().name_mut() = name;
     *ntauthority_user.object_identifier_mut() = sid;
-    *ntauthority_user.properties_mut().domainsid_mut() = vec_users[0].properties().domainsid().to_string();
+
+    if let Some(first_user) = vec_users.get(0) {
+        *ntauthority_user.properties_mut().domainsid_mut() = first_user.properties().domainsid().to_string();
+    } else {
+        error!("vec_users is empty, skipping domain SID assignment");
+    }
+
     vec_users.push(ntauthority_user);
     Ok(())
 }
@@ -246,9 +284,6 @@ pub fn add_childobjects_members<T: LdapObject>(
     let total = vec_replaced.len();
     let pb = ProgressBar::new(total as u64);
 
-    // Precompute "null" to avoid repeated allocations
-    let null: String = "NULL".to_string();
-
     // Iterate over the objects
     for (count, object) in vec_replaced.iter_mut().enumerate() {
         // Update progress bar periodically
@@ -262,7 +297,7 @@ pub fn add_childobjects_members<T: LdapObject>(
             .iter()
             .find(|(_, v)| **v == sid)
             .map(|(k, _)| k)
-            .unwrap_or(&null);
+            .unwrap_or(&sid);
         let name = get_name_from_full_distinguishedname(dn);
         let _otype = sid_type.get(&sid).unwrap();
 
@@ -282,7 +317,7 @@ pub fn add_childobjects_members<T: LdapObject>(
                 {
                     let mut member = Member::new();
                     *member.object_identifier_mut() = value_sid.clone();
-                    *member.object_type_mut() = sid_type.get(value_sid).unwrap_or(&null).to_string();
+                    *member.object_type_mut() = sid_type.get(value_sid).unwrap_or(&value_sid).to_string();
                     if !member.object_identifier().is_empty() {
                         return Some(member);
                     }
@@ -580,37 +615,43 @@ pub fn replace_sid_members(
     sid_type: &HashMap<String, String>,
     vec_trusts: &[Trust],
 ) -> Result<(), Box<dyn Error>> {
-    // Progress bar setup
     let total = vec_groups.len();
     let pb = ProgressBar::new(total as u64);
 
-    // Default values
-    let default_sid = "NULL".to_string();
     let default_type = "Group".to_string();
 
-    // Iterate over groups
     for (count, group) in vec_groups.iter_mut().enumerate() {
-        // Update progress bar periodically
         if count % (total / 100).max(1) == 0 {
             pb.set_position(count as u64);
         }
 
-        // Process each member in the group
         for member in group.members_mut() {
             let member_dn = member.object_identifier();
 
-            // Get the SID from dn_sid or check in trusts
-            let sid = dn_sid.get(member_dn).unwrap_or(&default_sid);
-            if sid == "NULL" {
-                // Generate SID from another domain if not found
-                let generated_sid = sid_maker_from_another_domain(vec_trusts, member_dn)?;
-                *member.object_identifier_mut() = generated_sid.to_owned();
+            // 1) Skip clearly invalid entries
+            if member_dn.trim().is_empty() || member_dn.eq_ignore_ascii_case("SID") {
+                error!("Skipping empty/invalid member DN in group");
+                continue;
+            }
+
+            // 2) Try to resolve via dn_sid
+            if let Some(sid) = dn_sid.get(member_dn) {
+                if !sid.is_empty() && sid != "NULL" {
+                    let type_object =
+                        sid_type.get(sid).cloned().unwrap_or_else(|| default_type.clone());
+                    *member.object_identifier_mut() = sid.clone();
+                    *member.object_type_mut() = type_object;
+                    continue;
+                }
+            }
+
+            // 3) Fallback: try trusts
+            let generated_sid = sid_maker_from_another_domain(vec_trusts, member_dn)?;
+            if !generated_sid.is_empty() {
+                *member.object_identifier_mut() = generated_sid;
                 *member.object_type_mut() = default_type.clone();
             } else {
-                // Use the existing SID
-                let type_object = sid_type.get(sid).unwrap_or(&default_type).to_owned();
-                *member.object_identifier_mut() = sid.to_owned();
-                *member.object_type_mut() = type_object;
+                error!("Could not resolve SID for member DN: {}", member_dn);
             }
         }
     }
@@ -829,6 +870,7 @@ pub fn add_contained_by_for<T: LdapObject>(
 pub fn get_name_from_full_distinguishedname(dn_object: &str) -> String {
     // Example:
     // dn_object = CN=G0H4N,CN=USERS,DC=ESSOS,DC=LOCAL
+    trace!("get_name_from_full_distinguishedname() {:?}",&dn_object);
     let split1 = dn_object.split(",");
     let vec1 = split1.collect::<Vec<&str>>();
     let split2 = vec1[0].split("=");
