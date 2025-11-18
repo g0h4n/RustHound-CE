@@ -18,7 +18,7 @@ use crate::ldap::prepare_ldap_dc;
 use crate::utils::format::domain_to_dc;
 use crate::enums::regex::COMMON_RE1;
 use indicatif::ProgressBar;
-use log::trace;
+use log::{error,trace};
 
 /// Function to add default groups
 /// <https://github.com/fox-it/BloodHound.py/blob/645082e3462c93f31b571db945cde1fd7b837fb9/bloodhound/enumeration/memberships.py#L411>
@@ -232,7 +232,16 @@ pub fn add_default_users(
     name.push_str(&domain.to_uppercase());
     *ntauthority_user.properties_mut().name_mut() = name;
     *ntauthority_user.object_identifier_mut() = sid;
-    *ntauthority_user.properties_mut().domainsid_mut() = vec_users[0].properties().domainsid().to_string();
+
+    // *ntauthority_user.properties_mut().domainsid_mut() = vec_users[0].properties().domainsid().to_string();
+    if let Some(first_user) = vec_users.get(0) {
+        *ntauthority_user.properties_mut().domainsid_mut() = first_user.properties().domainsid().to_string();
+    } else {
+        // Gérer le cas vide : ignorer, mettre une valeur par défaut, etc.
+        error!("vec_users is empty, skipping domain SID assignment");
+    }
+
+
     vec_users.push(ntauthority_user);
     Ok(())
 }
