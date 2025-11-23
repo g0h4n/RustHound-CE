@@ -113,13 +113,19 @@ install_macos_deps:
 	@grep 'ar = "x86_64-apple-darwin14-clang"' ~/.cargo/config || echo 'ar = "x86_64-apple-darwin14-clang"' >> ~/.cargo/config
 	@echo "[?] Now you need to uncomment line 32 and comment line 34 in Cargo.toml for MacOS and run 'make macos'"
 
-build_macos:
+build_macos_x86_64:
 	@export PATH="/usr/local/bin/osxcross/target/bin:$PATH"
 	RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-apple-darwin --features nogssapi --no-default-features
-	cp target/x86_64-apple-darwin/release/$(prog).exe ./$(prog)_MacOS
-	@echo -e "[+] You can find \033[1;32m$(prog)_MacOS\033[0m in your current folder."
+	cp target/x86_64-apple-darwin/release/$(prog) ./$(prog)_MacOS
+	@echo -e "[+] You can find \033[1;32m$(prog)_MacOS_intel\033[0m in your current folder."
 
-macos: build_macos
+build_macos_aarch64:
+	@export PATH="/usr/local/bin/osxcross/target/bin:$PATH"
+	RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target aarch64-apple-darwin --features nogssapi --no-default-features
+	cp target/aarch64-apple-darwin/release/$(prog) ./$(prog)_MacOS_arm64
+	@echo -e "[+] You can find \033[1;32m$(prog)_MacOS_arm64\033[0m in your current folder."
+
+macos: build_macos_x86_64 build_macos_aarch64
 
 install_cross:
 	@cargo install --version 0.1.16 cross
