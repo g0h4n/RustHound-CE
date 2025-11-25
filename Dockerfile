@@ -1,4 +1,4 @@
-FROM rust:1.81.0-slim-bullseye
+FROM rust:1.91.1-slim-bullseye
 
 WORKDIR /usr/src/rusthound-ce
 
