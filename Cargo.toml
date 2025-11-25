@@ -10,6 +10,7 @@ version = "2.4.4"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
+rust-version = "1.85"
 
 [dependencies]
 tokio = "1.42.0"
