@@ -1,0 +1,174 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Release - ${{ matrix.platform.os-name }}
+    strategy:
+      matrix:
+        platform:
+          - os-name: Linux-x86_64
+            runs-on: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os-name: Linux-aarch64
+            runs-on: ubuntu-24.04
+            target: aarch64-unknown-linux-gnu
+          - os-name: Linux-armv7
+            runs-on: ubuntu-24.04
+            target: armv7-unknown-linux-gnueabihf
+          - os-name: Windows-x86_64
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os-name: Windows-x64-gnu
+            runs-on: windows-latest
+            target: x86_64-pc-windows-gnu
+          - os-name: macOS-x86_64
+            runs-on: macOS-latest
+            target: x86_64-apple-darwin
+          - os-name: macOS-aarch64
+            runs-on: macOS-latest
+            target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.platform.runs-on }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+
+      #######################################################################
+      # LINUX DEPENDENCIES (Ubuntu 24.04)
+      #######################################################################
+      - name: Install cargo-cross
+        if: runner.os == 'Linux'
+        run: cargo install cross --version 0.2.5
+        
+      - name: Install Dependencies for Native Linux
+        if: matrix.platform.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y install \
+            pkg-config \
+            libssl-dev \
+            libkrb5-dev \
+            libsasl2-modules-gssapi-mit
+
+
+      #######################################################################
+      # WINDOWS DEPENDENCIES
+      #######################################################################
+      - name: Install GNU toolchain (Windows)
+        if: matrix.platform.target == 'x86_64-pc-windows-gnu'
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu
+          choco install mingw
+
+      - name: Install Dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Install LLVM for clang
+          winget install LLVM -e --silent --accept-source-agreements
+
+          # Install MIT Kerberos for Windows
+          $url = "https://web.mit.edu/kerberos/dist/kfw/4.1/kfw-4.1-amd64.msi"
+          Invoke-WebRequest $url -OutFile "kfw.msi"
+          Start-Process msiexec.exe -ArgumentList "/i kfw.msi /qn /norestart" -Wait
+
+          # Set environment paths for Clang and Kerberos
+          echo "KERB_ROOT=C:\Program Files\MIT\Kerberos" >> $env:GITHUB_ENV
+          echo "INCLUDE=C:\Program Files\MIT\Kerberos\include" >> $env:GITHUB_ENV
+          echo "LIB=C:\Program Files\MIT\Kerberos\lib" >> $env:GITHUB_ENV
+
+
+      #######################################################################
+      # MACOS DEPENDENCIES
+      #######################################################################
+      - name: Install Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install \
+            llvm \
+            heimdal
+
+      - name: Install Rust targets (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
+
+      - name: Set build environment for macOS
+        if: runner.os == 'macOS'
+        run: |
+          echo "C_INCLUDE_PATH=$(brew --prefix heimdal)/include" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$(brew --prefix heimdal)/lib" >> $GITHUB_ENV
+
+
+      #######################################################################
+      # BUILD
+      #######################################################################
+      - name: Create Cross.toml for vendored OpenSSL
+        if: runner.os == 'Linux'
+        run: |
+          cat <<EOF > Cross.toml
+          # For Debian-based gnu targets
+          [target.aarch64-unknown-linux-gnu]
+          pre-build = ["dpkg --add-architecture arm64 && apt-get update && apt-get install -y libssl-dev:arm64"]
+          [target.armv7-unknown-linux-gnueabihf]
+          pre-build = ["dpkg --add-architecture armhf && apt-get update && apt-get install -y libssl-dev:armhf"]
+
+          # For Alpine-based musl targets
+          
+          # For Fedora-based Windows gnu target
+          EOF
+
+      - name: Build binary
+        shell: bash
+        run: |
+          RUSTFLAGS_VAL=""
+          if [[ "${{ matrix.platform.target }}" == "x86_64-unknown-linux-gnu" || "${{ runner.os }}" == "macOS" || "${{ matrix.platform.target }}" == "x86_64-pc-windows-msvc" ]]; then
+            RUSTFLAGS_VAL="-C target-feature=+crt-static"
+          fi
+          
+          NOGSSAPI_FLAGS=""
+          if [[ "${{ runner.os }}" == "macOS" || "${{ matrix.platform.target }}" == "x86_64-unknown-linux-gnu" ]]; then
+            NOGSSAPI_FLAGS="--features nogssapi --no-default-features"
+          fi
+
+          export RUSTFLAGS="$RUSTFLAGS_VAL"
+
+          if [[ "${{ matrix.platform.target }}" == "x86_64-unknown-linux-gnu" ]]; then
+            # Native Linux build
+            cargo build --verbose --locked --release --target ${{ matrix.platform.target }} $NOGSSAPI_FLAGS
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            # Cross-compile Linux or Windows (GNU) build
+            cross build --verbose --locked --release --target ${{ matrix.platform.target }} --features nogssapi --no-default-features
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            # Native macOS build
+            cargo build --verbose --locked --release --target ${{ matrix.platform.target }} $NOGSSAPI_FLAGS
+          else
+            # Native Windows (MSVC) build
+            cargo build --verbose --locked --release --target ${{ matrix.platform.target }}
+          fi
+
+      - name: Clean up Cross.toml
+        if: always() && runner.os == 'Linux'
+        run: rm Cross.toml
+
+
+      #######################################################################
+      # RELEASE
+      #######################################################################
+      - name: Publish artifacts and release
+        uses: houseabsolute/actions-rust-release@v0
+        with:
+          executable-name: ${{ (runner.os == 'Linux' && contains(matrix.platform.target, 'windows')) && 'rusthound-ce.exe' || 'rusthound-ce' }}
+          target: ${{ matrix.platform.target }}
+          archive-name: ${{ matrix.platform.target == 'x86_64-pc-windows-gnu' && 'rusthound-ce-Windows-gnu-x86_64' || '' }}
+          changes-file: ''
