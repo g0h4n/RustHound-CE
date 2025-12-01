@@ -2,8 +2,7 @@
 
 ## 2.4.5 - 2025-12-01
 
-Testing Github Workflow Action for Rust compilation. Thanks to [@aancw](https://github.com/aancw) for initial commit on RustHound-CE project.
-
+Testing the GitHub Workflow Action for Rust compilation. Special thanks to [@aancw](https://github.com/aancw) for providing the GitHub workflow action.
 
 ## 2.4.4 - 2025-11-18
 
