@@ -160,9 +160,12 @@ jobs:
             cargo build --verbose --locked --release --target ${{ matrix.platform.target }}
           fi
 
-      - name: Clean up Cross.toml
+      - name: Remove Cross.toml if exists
         if: always() && runner.os == 'Linux'
-        run: rm Cross.toml
+        run: |
+          if [ -f Cross.toml ]; then
+            rm Cross.toml
+          fi
 
 
       #######################################################################
