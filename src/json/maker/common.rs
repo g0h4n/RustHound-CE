@@ -95,7 +95,7 @@ pub fn add_file<T: LdapObject>(
       let filename = file.0;
       let content = file.1;
       trace!("Adding file {}",filename.bold());
-      let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+      let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
       writer.start_file(filename, options)?;
       writer.write_all(content.as_bytes())?;
    }
