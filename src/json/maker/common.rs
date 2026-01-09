@@ -1,3 +1,5 @@
+use obfstr::obfstr;
+
 use serde_json::value::Value;
 
 use std::collections::HashMap;
@@ -79,7 +81,7 @@ pub fn add_file<T: LdapObject>(
    path: &String,
    json_result: &HashMap<String, String>
  ) -> Result<String, Box<dyn Error>> {
-   let final_path = format!("{}/{}_{}_rusthound-ce.zip",path,datetime,domain);
+   let final_path = format!("{}/{}_{}_{}.zip",path,datetime,domain,obfstr!("rusthound-ce"));
    let mut file = File::create(&final_path).expect("Couldn't create file");
    create_zip_archive(&mut file, json_result).expect("Couldn't create archive");
  

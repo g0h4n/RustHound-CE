@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.7 - 2026-01-09
+
+Add [obfstr](https://docs.rs/obfstr/latest/obfstr/) for string obfuscation support, required by other projects.
+
 ## 2.4.6 - 2026-01-09
 
 Update Zip Compression Method. Currently the zip is in stored format, opting to change to deflated to save disk space.
