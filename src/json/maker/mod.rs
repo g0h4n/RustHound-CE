@@ -8,7 +8,7 @@ use crate::utils::date::return_current_fulldate;
 pub mod common;
 
 /// This function will create json output and zip output
-pub fn make_result(common_args: &Options, ad_results: ADResults) -> Result<(), Box<dyn Error>> {
+pub fn make_result(common_args: &Options, ad_results: ADResults) -> Result<String, Box<dyn Error>> {
    // Format domain name
    let filename = common_args.domain.replace(".", "-").to_lowercase();
 
@@ -126,11 +126,11 @@ pub fn make_result(common_args: &Options, ad_results: ADResults) -> Result<(), B
    )?;
    // All in zip file
    if common_args.zip {
-      common::make_a_zip(
+      return Ok(common::make_a_zip(
          &datetime,
          &filename,
          &common_args.path,
-         &json_result);
+         &json_result)?)
    }
-   Ok(())
+   Ok(String::from("No zip full path"))
 }

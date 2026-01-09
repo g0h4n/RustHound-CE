@@ -7,6 +7,8 @@ use log::{info, debug, trace};
 use std::fs;
 use std::fs::File;
 use std::io::{Seek, Write};
+use std::error::Error;
+
 use zip::result::ZipResult;
 use zip::write::{SimpleFileOptions, ZipWriter};
 
@@ -76,12 +78,13 @@ pub fn add_file<T: LdapObject>(
    domain: &String,
    path: &String,
    json_result: &HashMap<String, String>
- ){
+ ) -> Result<String, Box<dyn Error>> {
    let final_path = format!("{}/{}_{}_rusthound-ce.zip",path,datetime,domain);
    let mut file = File::create(&final_path).expect("Couldn't create file");
    create_zip_archive(&mut file, json_result).expect("Couldn't create archive");
  
    info!("{} created!",&final_path.bold());
+   Ok(final_path)
  }
  
  

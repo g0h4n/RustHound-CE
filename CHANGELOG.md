@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.6 - 2026-01-09
+
+Update Zip Compression Method. Currently the zip is in stored format, opting to change to deflated to save disk space.
+Special thanks to [Spyr0](https://github.com/spyr0-sec) for pull request [#28](https://github.com/g0h4n/RustHound-CE/commit/0b33a16eb77044c8f68b6643c542c70b1e455afc).
+
 ## 2.4.5 - 2025-12-01
 
 Testing the GitHub Workflow Action for Rust compilation. Special thanks to [@aancw](https://github.com/aancw) for providing the GitHub workflow action.
