@@ -39,7 +39,7 @@ obfstr = "0.4.1"
 
 [features]
 noargs = ["winreg"] # Only available for Windows
-nogssapi = ["ldap3/tls-native"] # Used for linux_musl armv7 and macos compilation
+nogssapi = ["ldap3/tls-rustls"] # Used for linux_musl armv7 and macos compilation
 default = ["ldap3/tls-rustls","ldap3/gssapi"]
 
 [profile.release]
