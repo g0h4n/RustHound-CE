@@ -18,6 +18,7 @@ pub enum Type {
     AIACA,
     CertTemplate,
     IssuancePolicie,
+    Schema,
     Unknown
 }
 
@@ -93,6 +94,9 @@ pub fn get_type(result: &SearchEntry) -> std::result::Result<Type, Type> {
                         return Ok(Type::IssuancePolicie);
                     }
                 }
+            }
+            _ if contains(vals, "attributeSchema") => {
+                return Ok(Type::Schema);
             }
             _ => {}
         }

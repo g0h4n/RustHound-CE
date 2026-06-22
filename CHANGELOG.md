@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.8 - 2026-06-22
+
+Fix issue [#33](https://github.com/g0h4n/RustHound-CE/issues/33) regarding false-positive `GenericAll` edges on Exchange-enabled objects. [acl.rs](https://github.com/g0h4n/RustHound-CE/blob/main/src/enums/acl.rs)
+
+`ACCESS_ALLOWED_OBJECT_ACE` entries scoped to specific attribute GUIDs (e.g. Exchange-related properties) were incorrectly promoted to `GenericAll` on the whole object. The fix adds an `ace_applies()` check on `ACE_OBJECT_TYPE_PRESENT` to ensure object-scoped ACEs are not over-classified.
+
+Groundwork for issue [#35](https://github.com/g0h4n/RustHound-CE/issues/35): added dynamic schema GUID collection by parsing `attributeSchema` objects from the `CN=Schema` naming context (cf [schema.rs](https://github.com/g0h4n/RustHound-CE/blob/main/src/objects/schema.rs)). The collected `name:schemaIDGUID` mappings are stored in a `schema_guid_map` and will replace the static `OBJECTTYPE_GUID_HASHMAP` for ACE resolution in a future release.
+
 ## 2.4.7 - 2026-01-09
 
 Add [obfstr](https://docs.rs/obfstr/latest/obfstr/) for string obfuscation support, required by other projects.

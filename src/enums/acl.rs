@@ -21,7 +21,20 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
     result_attrs: &HashMap<String, Vec<String>>,
     result_bin: &HashMap<String, Vec<Vec<u8>>>,
     domain: &str,
+    schema_guid_map: &HashMap<String, String>,
 ) -> Vec<AceTemplate> {
+
+    // Fallback if dynamic schema_guid_map empty
+    // Not used yet need to be validate for issue #35!
+    trace!("schema_guid_map size: {}", schema_guid_map.len());
+    let guid_map: &HashMap<String, String> = if schema_guid_map.is_empty() {
+        &OBJECTTYPE_GUID_HASHMAP
+    } else {
+        // schema_guid_map
+        &OBJECTTYPE_GUID_HASHMAP
+    };
+    // trace!("schema_guid_map content:\n{:?}", schema_guid_map);
+
     let mut relations_dacl: Vec<AceTemplate> = Vec::new();
     let relations_sacl: Vec<AceTemplate> = Vec::new();
     let mut owner_sid: String = "".to_string();
@@ -71,6 +84,7 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
                     &entry_type,
                     result_attrs,
                     result_bin,
+                    &guid_map
                 );*/
                 trace!("RESULT: {:?}", relations_sacl);
             }
@@ -96,6 +110,7 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
                     entry_type,
                     result_attrs,
                     result_bin,
+                    &guid_map
                 );
                 trace!("RESULT: {:?}", relations_dacl);
             }
@@ -117,6 +132,7 @@ fn ace_maker<T: LdapObject>(
     entry_type: &str,
     _result_attrs: &HashMap<String, Vec<String>>,
     _result_bin: &HashMap<String, Vec<Vec<u8>>>,
+    guid_map: &HashMap<String, String>,
 ) {
     // trace!("ACL/ACE FOR ENTRY: {:?}",object.properties().name);
     // Ignore Creator Owner or Local System
@@ -181,7 +197,7 @@ fn ace_maker<T: LdapObject>(
                 // continue
                 // https://github.com/fox-it/BloodHound.py/blob/645082e3462c93f31b571db945cde1fd7b837fb9/bloodhound/enumeration/acls.py#L85
                 let ace_guid = decode_guid_le(&inherited_object_type.to_le_bytes().to_vec()).to_lowercase();
-                if !(ace_applies(&ace_guid, entry_type)) {
+                if !(ace_applies(&ace_guid, entry_type, guid_map)) {
                     continue;
                 }
             }
@@ -203,15 +219,24 @@ fn ace_maker<T: LdapObject>(
             {
                 trace!("ACE MASK contain: GENERIC_ALL or WRITE_DACL or WRITE_OWNER or GENERIC_WRITE");
                 let inherited_ace_guid = decode_guid_le(&inherited_object_type.to_le_bytes().to_vec()).to_lowercase();
-                if &flags & ACE_INHERITED_OBJECT_TYPE_PRESENT == ACE_INHERITED_OBJECT_TYPE_PRESENT && !ace_applies(&inherited_ace_guid, entry_type) {
+
+                if &flags & ACE_INHERITED_OBJECT_TYPE_PRESENT == ACE_INHERITED_OBJECT_TYPE_PRESENT 
+                    && !ace_applies(&inherited_ace_guid, entry_type, guid_map) 
+                {
                     continue;
                 }
+                if flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT
+                    && !ace_applies(&ace_guid, entry_type, guid_map) 
+                {
+                    continue;
+                }
+                
                 if (MaskFlags::GENERIC_ALL.bits() | mask) == mask 
                 {
                     if entry_type == "Computer" 
                         && (flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT)
                         && object.get_haslaps().to_owned()
-                        && &ace_guid == OBJECTTYPE_GUID_HASHMAP.get("ms-mcs-admpwd").unwrap_or(&String::from("GUID-NOT-FOUND"))
+                        && &ace_guid == guid_map.get("ms-mcs-admpwd").unwrap_or(&String::from("GUID-NOT-FOUND"))
                     {
                         relations.push(AceTemplate::new(
                             sid.to_owned(),
@@ -339,7 +364,7 @@ fn ace_maker<T: LdapObject>(
                 // AddKeyCredentialLink write access
                 if ((entry_type == "User") || (entry_type == "Computer"))
                     && (&flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT)
-                    && (&ace_guid == OBJECTTYPE_GUID_HASHMAP.get("ms-ds-key-credential-link").unwrap_or(&String::from("GUID-NOT-FOUND")))
+                    && (&ace_guid == guid_map.get("msds-keycredentiallink").unwrap_or(&String::from("GUID-NOT-FOUND")))
                 {
                     relations.push(AceTemplate::new(
                         sid.to_owned(),
@@ -351,7 +376,7 @@ fn ace_maker<T: LdapObject>(
                 }
                 if ((entry_type == "User") || (entry_type == "Computer"))
                     && (&flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT) 
-                    && (&ace_guid == OBJECTTYPE_GUID_HASHMAP.get("service-principal-name").unwrap_or(&String::from("GUID-NOT-FOUND")))
+                    && (&ace_guid == guid_map.get("serviceprincipalname").unwrap_or(&String::from("GUID-NOT-FOUND")))
                 {
                     relations.push(AceTemplate::new(
                         sid.to_owned(),
@@ -379,14 +404,15 @@ fn ace_maker<T: LdapObject>(
             // Property read privileges
             // https://github.com/fox-it/BloodHound.py/blob/645082e3462c93f31b571db945cde1fd7b837fb9/bloodhound/enumeration/acls.py#L138
             if (MaskFlags::ADS_RIGHT_DS_READ_PROP.bits() | mask) == mask 
+                && (MaskFlags::ADS_RIGHT_DS_CONTROL_ACCESS.bits() | mask) == mask
             {
                 if (entry_type == "Computer")
                     && (&flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT)
                     && object.get_haslaps().to_owned()
                 {
-                    if &ace_guid == OBJECTTYPE_GUID_HASHMAP.get("ms-mcs-admpwd").unwrap_or(&String::from("GUID-NOT-FOUND")) 
-                        || &ace_guid == OBJECTTYPE_GUID_HASHMAP.get("ms-laps-password").unwrap_or(&String::from("GUID-NOT-FOUND"))
-                        || &ace_guid == OBJECTTYPE_GUID_HASHMAP.get("ms-laps-encryptedpassword").unwrap_or(&String::from("GUID-NOT-FOUND"))
+                    if &ace_guid == guid_map.get("ms-mcs-admpwd").unwrap_or(&String::from("GUID-NOT-FOUND")) 
+                        || &ace_guid == guid_map.get("ms-laps-password").unwrap_or(&String::from("GUID-NOT-FOUND"))
+                        || &ace_guid == guid_map.get("ms-laps-encryptedpassword").unwrap_or(&String::from("GUID-NOT-FOUND"))
                     {
                         relations.push(AceTemplate::new(
                             sid.to_owned(),
@@ -724,14 +750,14 @@ fn has_extended_right(ace: &Ace, bin_right_guid: &str) -> bool {
 
 /// Check if an ACE applies to this object.
 /// <https://github.com/fox-it/BloodHound.py/blob/645082e3462c93f31b571db945cde1fd7b837fb9/bloodhound/enumeration/acls.py#L229>
-fn ace_applies(ace_guid: &String, entry_type: &str) -> bool {
+fn ace_applies(ace_guid: &String, entry_type: &str, guid_map: &HashMap<String, String>) -> bool {
     // Checks if an ACE applies to this object (based on object classes).
     // Note that this function assumes you already verified that InheritedObjectType is set (via the flag).
     // If this is not set, the ACE applies to all object types.
     trace!("ACE GUID: {}", &ace_guid);
     let entry_type_lower = entry_type.to_lowercase();
-    trace!("OBJECTTYPE_GUID_HASHMAP: {}",OBJECTTYPE_GUID_HASHMAP.get(&entry_type_lower).unwrap_or(&String::from("GUID-NOT-FOUND")));
-    ace_guid == OBJECTTYPE_GUID_HASHMAP.get(&entry_type_lower).unwrap_or(&String::from("GUID-NOT-FOUND"))
+    trace!("guid_map: {}",guid_map.get(&entry_type_lower).unwrap_or(&String::from("GUID-NOT-FOUND")));
+    ace_guid == guid_map.get(&entry_type_lower).unwrap_or(&String::from("GUID-NOT-FOUND"))
 }
 
 /// Function to parse GMSA DACL which states which users (or groups) can read the password
@@ -922,9 +948,11 @@ fn has_control(secdesc_control: u16, flag: SecurityDescriptorFlags) -> bool {
 lazy_static! {
     static ref OBJECTTYPE_GUID_HASHMAP: HashMap<String, String> = {
         let values = [
+            ("ms-laps-password", "a156e052-fb12-45bc-9a00-056271040d9f"),
             ("ms-mcs-admpwdexpirationtime", "2bb09a7b-9acd-4082-9b51-104bb7f6a01e"),
             ("ms-mcs-admpwd", "a740f691-b206-4baa-9ab1-559f8985523f"),
             ("ms-ds-key-credential-link", "5b47d60f-6090-40b2-9f37-2a4de88f3063"),
+            ("msds-keycredentiallink", "5b47d60f-6090-40b2-9f37-2a4de88f3063"),
             ("service-principal-name", "f3a64788-5306-11d1-a9c5-0000f80367c1"),
             ("ms-ds-sitename", "98a7f36d-3595-448a-9e6f-6b8965baed9c"),
             ("frs-staging-path", "1be8f175-a9ff-11d0-afe2-00c04fd930c9"),

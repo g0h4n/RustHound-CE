@@ -4,13 +4,27 @@ use indicatif::ProgressBar;
 use ldap3::SearchEntry;
 
 use crate::{
-    args::Options, banner::progress_bar, enums::{get_type, Type, PARSER_MOD_RE1, PARSER_MOD_RE2}, json::{
-        checker::check_all_result,
-    }, 
+    args::Options, banner::progress_bar, enums::{PARSER_MOD_RE1, PARSER_MOD_RE2, Type, get_type}, json::checker::check_all_result, 
     objects::{
-        aiaca::AIACA, certtemplate::CertTemplate, common::parse_unknown, computer::Computer, container::Container, domain::Domain, enterpriseca::EnterpriseCA, fsp::Fsp, gpo::Gpo, group::Group, inssuancepolicie::IssuancePolicie, ntauthstore::NtAuthStore, ou::Ou, rootca::RootCA, trust::Trust, user::User
+        aiaca::AIACA,
+        certtemplate::CertTemplate,
+        common::parse_unknown,
+        computer::Computer,
+        container::Container,
+        domain::Domain,
+        enterpriseca::EnterpriseCA,
+        fsp::Fsp,
+        gpo::Gpo,
+        group::Group,
+        inssuancepolicie::IssuancePolicie,
+        ntauthstore::NtAuthStore,
+        ou::Ou,
+        rootca::RootCA,
+        trust::Trust,
+        user::User,
+        schema::Schema,
     }, 
-    storage::{EntrySource}
+    storage::EntrySource
 };
 
 #[derive(Default)]
@@ -30,7 +44,6 @@ pub struct ADResults {
     pub enterprisecas: Vec<EnterpriseCA>,
     pub certtemplates: Vec<CertTemplate>,
     pub issuancepolicies: Vec<IssuancePolicie>,
-
     pub mappings: DomainMappings,
 }
 
@@ -44,6 +57,8 @@ pub struct DomainMappings {
     pub fqdn_sid: HashMap<String, String>,
     /// fqdn to an ip address
     pub fqdn_ip: HashMap<String, String>,
+    /// schema guid map
+    pub schema_guid_map: HashMap<String, String>,
 }
 
 impl ADResults {
@@ -117,12 +132,25 @@ pub fn parse_result_type_from_source(
         match atype {
             Type::User => {
                 let mut user: User = User::new();
-                user.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                user.parse(
+                    entry,
+                    domain, dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.users.push(user);
             }
             Type::Group => {
                 let mut group = Group::new();
-                group.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                group.parse(
+                    entry,
+                    domain,
+                    dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.groups.push(group);
             }
             Type::Computer => {
@@ -135,18 +163,32 @@ pub fn parse_result_type_from_source(
                     fqdn_sid,
                     fqdn_ip,
                     &domain_sid,
+                    &results.mappings.schema_guid_map
                 )?;
                 results.computers.push(computer);
             }
             Type::Ou => {
                 let mut ou = Ou::new();
-                ou.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                ou.parse(
+                    entry,
+                    domain,
+                    dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.ous.push(ou);
             }
             Type::Domain => {
                 let mut domain_object = Domain::new();
                 let domain_sid_from_domain =
-                    domain_object.parse(entry, domain, dn_sid, sid_type)?;
+                    domain_object.parse(
+                        entry,
+                        domain,
+                        dn_sid,
+                        sid_type,
+                        &results.mappings.schema_guid_map
+                    )?;
                 domain_sid = domain_sid_from_domain;
                 // Only add domains with valid ObjectIdentifier (excludes DomainDnsZones, ForestDnsZones, etc.)
                 if !domain_object.object_identifier().is_empty() {
@@ -155,7 +197,13 @@ pub fn parse_result_type_from_source(
             }
             Type::Gpo => {
                 let mut gpo = Gpo::new();
-                gpo.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                gpo.parse(
+                    entry,
+                    domain, dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.gpos.push(gpo);
             }
             Type::ForeignSecurityPrincipal => {
@@ -173,7 +221,14 @@ pub fn parse_result_type_from_source(
 
                 //trace!("Container: {}",&entry.dn.to_uppercase());
                 let mut container = Container::new();
-                container.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                container.parse(
+                    entry,
+                    domain,
+                    dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.containers.push(container);
             }
             Type::Trust => {
@@ -183,33 +238,81 @@ pub fn parse_result_type_from_source(
             }
             Type::NtAutStore => {
                 let mut nt_auth_store = NtAuthStore::new();
-                nt_auth_store.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                nt_auth_store.parse(
+                    entry,
+                    domain,
+                    dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.ntauthstores.push(nt_auth_store);
             }
             Type::AIACA => {
                 let mut aiaca = AIACA::new();
-                aiaca.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                aiaca.parse(
+                    entry,
+                    domain, dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.aiacas.push(aiaca);
             }
             Type::RootCA => {
                 let mut root_ca = RootCA::new();
-                root_ca.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                root_ca.parse(
+                    entry,
+                    domain,
+                    dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.rootcas.push(root_ca);
             }
             Type::EnterpriseCA => {
                 let mut enterprise_ca = EnterpriseCA::new();
-                enterprise_ca.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                enterprise_ca.parse(
+                    entry,
+                    domain,
+                    dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.enterprisecas.push(enterprise_ca);
             }
             Type::CertTemplate => {
                 let mut cert_template = CertTemplate::new();
-                cert_template.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                cert_template.parse(
+                    entry,
+                    domain,
+                    dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.certtemplates.push(cert_template);
             }
             Type::IssuancePolicie => {
                 let mut issuance_policie = IssuancePolicie::new();
-                issuance_policie.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                issuance_policie.parse(
+                    entry,
+                    domain,
+                    dn_sid,
+                    sid_type,
+                    &domain_sid,
+                    &results.mappings.schema_guid_map
+                )?;
                 results.issuancepolicies.push(issuance_policie);
+            }
+            Type::Schema => {
+                let schema = Schema::new();
+                schema.parse(
+                    entry,
+                    &mut results.mappings.schema_guid_map,
+                )?;
             }
             Type::Unknown => {
                 let _unknown = parse_unknown(entry, domain);

@@ -20,6 +20,7 @@
 //! let container = Container::new();
 //! ```
 //! 
+pub mod schema;
 pub mod user;
 pub mod group;
 pub mod computer;

@@ -74,6 +74,7 @@ impl Domain {
         domain_name: &str,
         dn_sid: &mut HashMap<String, String>,
         sid_type: &mut HashMap<String, String>,
+        schema_guid_map: &HashMap<String, String>,
     ) -> Result<String, Box<dyn Error>> {
         let result_dn: String = result.dn.to_uppercase();
         let result_attrs: HashMap<String, Vec<String>> = result.attrs;
@@ -197,6 +198,7 @@ impl Domain {
                         &result_attrs,
                         &result_bin,
                         domain_name,
+                        schema_guid_map,
                     );
                     self.aces = relations_ace;
                 }

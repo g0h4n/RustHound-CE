@@ -415,6 +415,14 @@ pub async fn get_all_naming_contexts(
                     }
                 }
             }
+            
+            // Put CN=Schema first so schema_guid_map is complete before ACEs are parsed
+            naming_contexts.sort_by_key(|cn| {
+                if cn.contains("CN=Schema") { 0 }
+                else if cn.contains("CN=Configuration") { 2 }
+                else { 1 }
+            });
+
             return Ok(naming_contexts)
         }
         Err(err) => {

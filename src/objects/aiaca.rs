@@ -44,7 +44,8 @@ impl AIACA {
         domain: &str,
         dn_sid: &mut HashMap<String, String>,
         sid_type: &mut HashMap<String, String>,
-        domain_sid: &str
+        domain_sid: &str,
+        schema_guid_map: &HashMap<String, String>,
     ) -> Result<(), Box<dyn Error>> {
         let result_dn: String = result.dn.to_uppercase();
         let result_attrs: HashMap<String, Vec<String>> = result.attrs;
@@ -113,6 +114,7 @@ impl AIACA {
                         &result_attrs,
                         &result_bin,
                         domain,
+                        schema_guid_map,
                     );
                     self.aces = relations_ace;
                 }
