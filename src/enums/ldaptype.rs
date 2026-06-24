@@ -95,7 +95,8 @@ pub fn get_type(result: &SearchEntry) -> std::result::Result<Type, Type> {
                     }
                 }
             }
-            _ if contains(vals, "attributeSchema") => {
+            _ if contains(vals, "attributeSchema") 
+                || contains(vals, "classSchema") => {
                 return Ok(Type::Schema);
             }
             _ => {}

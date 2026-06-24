@@ -28,10 +28,11 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
     // Not used yet need to be validate for issue #35!
     trace!("schema_guid_map size: {}", schema_guid_map.len());
     let guid_map: &HashMap<String, String> = if schema_guid_map.is_empty() {
+        // trace!("schema_guid_map status: empty");
         &OBJECTTYPE_GUID_HASHMAP
     } else {
-        // schema_guid_map
-        &OBJECTTYPE_GUID_HASHMAP
+        // trace!("schema_guid_map status: not empty");
+        schema_guid_map
     };
     // trace!("schema_guid_map content:\n{:?}", schema_guid_map);
 
@@ -364,7 +365,7 @@ fn ace_maker<T: LdapObject>(
                 // AddKeyCredentialLink write access
                 if ((entry_type == "User") || (entry_type == "Computer"))
                     && (&flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT)
-                    && (&ace_guid == guid_map.get("msds-keycredentiallink").unwrap_or(&String::from("GUID-NOT-FOUND")))
+                    && (&ace_guid == guid_map.get("ms-ds-key-credential-link").unwrap_or(&String::from("GUID-NOT-FOUND")))
                 {
                     relations.push(AceTemplate::new(
                         sid.to_owned(),
@@ -376,7 +377,7 @@ fn ace_maker<T: LdapObject>(
                 }
                 if ((entry_type == "User") || (entry_type == "Computer"))
                     && (&flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT) 
-                    && (&ace_guid == guid_map.get("serviceprincipalname").unwrap_or(&String::from("GUID-NOT-FOUND")))
+                    && (&ace_guid == guid_map.get("service-principal-name").unwrap_or(&String::from("GUID-NOT-FOUND")))
                 {
                     relations.push(AceTemplate::new(
                         sid.to_owned(),
@@ -410,6 +411,7 @@ fn ace_maker<T: LdapObject>(
                     && (&flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT)
                     && object.get_haslaps().to_owned()
                 {
+                    trace!("ReadLAPS check: ace_guid={} ms-mcs-admpwd={:?}", ace_guid, guid_map.get("ms-mcs-admpwd"));
                     if &ace_guid == guid_map.get("ms-mcs-admpwd").unwrap_or(&String::from("GUID-NOT-FOUND")) 
                         || &ace_guid == guid_map.get("ms-laps-password").unwrap_or(&String::from("GUID-NOT-FOUND"))
                         || &ace_guid == guid_map.get("ms-laps-encryptedpassword").unwrap_or(&String::from("GUID-NOT-FOUND"))
@@ -557,7 +559,8 @@ fn ace_maker<T: LdapObject>(
                 ));
                 continue
             }
-            if (MaskFlags::ADS_RIGHT_DS_WRITE_PROP.bits() | mask) == mask 
+            if (MaskFlags::ADS_RIGHT_DS_WRITE_PROP.bits() | mask) == mask
+                && ["User", "Group", "Computer", "Gpo", "OU"].contains(&entry_type)
             {
                 relations.push(AceTemplate::new(
                     sid.to_owned(),
@@ -592,7 +595,8 @@ fn ace_maker<T: LdapObject>(
             // For computer
             if (entry_type == "Computer")
                 && ((MaskFlags::ADS_RIGHT_DS_CONTROL_ACCESS.bits() | mask) == mask)
-                // && false
+                && !sid.ends_with("S-1-5-32-544")
+                && !sid.ends_with("-512")
             {
                 relations.push(AceTemplate::new(
                     sid.to_owned(),

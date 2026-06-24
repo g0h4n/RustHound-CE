@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.9 - 2026-06-24
+
+Issue [#35](https://github.com/g0h4n/RustHound-CE/issues/35), `ReadLAPSPassword` ACE now correctly detected on Computer objects.
+
+Two root causes were identified and fixed:
+
+1. `parse_ntsecuritydescriptor` was called with a fresh `Computer::new()` instead of `self`, so `haslaps` was always `false` during ACL parsing regardless of the actual LAPS state of the object.
+
+2. The GUID of `ms-mcs-admpwd` was previously hardcoded, but this attribute is defined when the LAPS extension is installed into the AD schema and its GUID varies between environments. It is now collected dynamically from `attributeSchema` objects alongside all other schema GUIDs.
+
 ## 2.4.8 - 2026-06-22
 
 Fix issue [#33](https://github.com/g0h4n/RustHound-CE/issues/33) regarding false-positive `GenericAll` edges on Exchange-enabled objects. [acl.rs](https://github.com/g0h4n/RustHound-CE/blob/main/src/enums/acl.rs)

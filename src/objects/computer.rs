@@ -119,9 +119,6 @@ impl Computer {
             trace!("  {key:?}:{value:?}");
         }
 
-        // Computer structure
-        let mut computer = Computer::new();
-
         // Change all values...
         self.properties.domain = domain.to_uppercase();
         self.properties.distinguishedname = result_dn;
@@ -269,6 +266,7 @@ impl Computer {
                 }
                 "ms-Mcs-AdmPwdExpirationTime" => {
                     // LAPS is set, random password for local adminsitrator
+                    // trace!("ms-Mcs-AdmPwdExpirationTime so haslaps=true");
                     self.properties.haslaps = true;
                 }
                 // New LAPS attributes
@@ -318,8 +316,9 @@ impl Computer {
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
+                    // trace!("Parsing nTSecurityDescriptor..");
                     let relations_ace = parse_ntsecuritydescriptor(
-                        &mut computer,
+                        self,
                         &value[0],
                         "Computer",
                         &result_attrs,
@@ -333,7 +332,7 @@ impl Computer {
                     // RBCD (Resource-based constrained)
                     // msDS-AllowedToActOnBehalfOfOtherIdentity parsing ACEs
                     let relations_ace = parse_ntsecuritydescriptor(
-                        &mut computer,
+                        self,
                         &value[0],
                         "Computer",
                         &result_attrs,
