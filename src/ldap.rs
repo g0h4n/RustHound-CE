@@ -373,7 +373,7 @@ async fn gssapi_connection(
     Ok(())
 }
 
-/// (Not needed yet) Get all namingContext for DC
+/// Get all namingContext for DC
 pub async fn get_all_naming_contexts(
     ldap: &mut ldap3::Ldap
 ) -> Result<Vec<String>, Box<dyn Error>> {
@@ -419,9 +419,15 @@ pub async fn get_all_naming_contexts(
             // Put CN=Schema first so schema_guid_map is complete before ACEs are parsed
             naming_contexts.sort_by_key(|cn| {
                 if cn.contains("CN=Schema") { 0 }
+                else if cn.to_lowercase().starts_with("dc=") { 1 }
                 else if cn.contains("CN=Configuration") { 2 }
-                else { 1 }
+                else { 3 }
             });
+
+            // Trace sorted naming contexts order
+            for (i, nc) in naming_contexts.iter().enumerate() {
+                trace!("NamingContext order [{}]: {}", i, nc);
+            }
 
             return Ok(naming_contexts)
         }

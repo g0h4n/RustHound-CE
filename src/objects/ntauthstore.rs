@@ -63,7 +63,7 @@ impl NtAuthStore {
   
         // Change all values...
         self.properties.domain = domain.to_uppercase();
-        self.properties.distinguishedname = result_dn;    
+        self.properties.distinguishedname = result_dn;
         self.properties.domainsid = domain_sid.to_string();
         self.domain_sid = domain_sid.to_string();
   

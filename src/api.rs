@@ -189,8 +189,10 @@ pub fn parse_result_type_from_source(
                         sid_type,
                         &results.mappings.schema_guid_map
                     )?;
-                domain_sid = domain_sid_from_domain;
-                // Only add domains with valid ObjectIdentifier (excludes DomainDnsZones, ForestDnsZones, etc.)
+                // Update only if domain_sid is valid
+                if domain_sid_from_domain != "DOMAIN_SID" && !domain_sid_from_domain.is_empty() {
+                    domain_sid = domain_sid_from_domain;
+                }
                 if !domain_object.object_identifier().is_empty() {
                     results.domains.push(domain_object);
                 }
@@ -208,7 +210,13 @@ pub fn parse_result_type_from_source(
             }
             Type::ForeignSecurityPrincipal => {
                 let mut security_principal = Fsp::new();
-                security_principal.parse(entry, domain, dn_sid, sid_type, &domain_sid)?;
+                security_principal.parse(
+                    entry,
+                    domain,
+                    dn_sid,
+                    sid_type,
+                    &domain_sid
+                )?;
                 results.fsps.push(security_principal);
             }
             Type::Container => {

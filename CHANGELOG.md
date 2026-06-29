@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.91 - 2026-06-24
+
+Issue [#36](https://github.com/g0h4n/RustHound-CE/issues/36), fix `domainsid` being set to the literal string `"DOMAIN_SID"` in ADCS-related objects (`ntauthstores`,`certtemplates`, `issuancepolicies`, `containers`, `enterprisecas`).
+
+1. Naming contexts were not processed in the correct order, so `CN=Configuration`, (which contains ADCS objects) was parsed before the principal domain naming context. Fixed by ensuring Schema is processed first, then the principal domain, then `CN=Configuration`.
+
+2. `DC=DomainDnsZones` and `DC=ForestDnsZones` are parsed as `Type::Domain` but have no valid `objectSid`, causing them to overwrite the already correctly set `domain_sid` with the literal `"DOMAIN_SID"`. Fixed by only updating `domain_sid` when the returned value is valid.
+
 ## 2.4.9 - 2026-06-24
 
 Issue [#35](https://github.com/g0h4n/RustHound-CE/issues/35), `ReadLAPSPassword` ACE now correctly detected on Computer objects.
