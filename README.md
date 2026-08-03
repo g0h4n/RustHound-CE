@@ -74,3 +74,4 @@ More information and examples with how to compile RustHound-CE or how to use Rus
 [![](https://github.com/0xdf223.png?size=50)](https://github.com/0xdf223)
 [<img src="https://pbs.twimg.com/profile_images/859140652617142272/z79HkNvx_400x400.jpg" alt="IppSec" width="50"/>](https://github.com/IppSec)
 [![](https://github.com/aancw.png?size=50)](https://github.com/aancw)
+[![](https://github.com/karanabe.png?size=50)](https://github.com/karanabe)

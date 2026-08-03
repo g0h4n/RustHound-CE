@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.92 - 2026-08-03
+
+This version implements two PRs ([#37](https://github.com/g0h4n/RustHound-CE/pull/37), [#38](https://github.com/g0h4n/RustHound-CE/pull/38)) with the following changes:
+
+- Collect the AD `profilePath` attribute for user objects, emitted as `Properties.profilepath` in `users.json`. This surfaces roaming profile and profile share paths in BloodHound CE user details, without changing CLI or LDAP collection behavior. Thanks [@karanabe](https://github.com/karanabe)!
+- Map all supported `msPKI-Certificate-Name-Flag` subject-name bits to their corresponding BloodHound properties, improving ADCS certificate template coverage. Thanks [@karanabe](https://github.com/karanabe)!
+- Correct the UPN subject-name default to `false` for `msPKI-Certificate-Name-Flag` mapping.
+- Add parser tests for `profilePath` covering both populated and absent values.
+- Add unit tests covering each `msPKI-Certificate-Name-Flag` bit independently; lab imports confirm all six properties are emitted correctly.
+
 ## 2.4.91 - 2026-06-24
 
 Issue [#36](https://github.com/g0h4n/RustHound-CE/issues/36), fix `domainsid` being set to the literal string `"DOMAIN_SID"` in ADCS-related objects (`ntauthstores`,`certtemplates`, `issuancepolicies`, `containers`, `enterprisecas`).
