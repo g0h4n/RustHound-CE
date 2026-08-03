@@ -91,6 +91,11 @@ impl CertTemplate {
                         self.properties.certificatenameflag = get_pki_cert_name_flags(value[0].parse::<i64>().unwrap_or(0) as u64);
                         self.properties.enrolleesuppliessubject = self.properties.certificatenameflag.contains("ENROLLEE_SUPPLIES_SUBJECT");
                         self.properties.subjectaltrequireupn = self.properties.certificatenameflag.contains("SUBJECT_ALT_REQUIRE_UPN");
+                        self.properties.subjectaltrequiredns = self.properties.certificatenameflag.contains("SUBJECT_ALT_REQUIRE_DNS");
+                        self.properties.subjectaltrequiredomaindns = self.properties.certificatenameflag.contains("SUBJECT_ALT_REQUIRE_DOMAIN_DNS");
+                        self.properties.subjectaltrequireemail = self.properties.certificatenameflag.contains("SUBJECT_ALT_REQUIRE_EMAIL");
+                        self.properties.subjectaltrequirespn = self.properties.certificatenameflag.contains("SUBJECT_ALT_REQUIRE_SPN");
+                        self.properties.subjectrequireemail = self.properties.certificatenameflag.contains("SUBJECT_REQUIRE_EMAIL");
                     }
                 }
                 "msPKI-Enrollment-Flag" => {
@@ -330,6 +335,11 @@ pub struct CertTemplateProperties {
    certificatenameflag: String,
    enrolleesuppliessubject: bool,
    subjectaltrequireupn: bool,
+   subjectaltrequiredns: bool,
+   subjectaltrequiredomaindns: bool,
+   subjectaltrequireemail: bool,
+   subjectaltrequirespn: bool,
+   subjectrequireemail: bool,
    ekus: Vec<String>,
    certificateapplicationpolicy: Vec<String>,
    authorizedsignatures: i64,
@@ -359,7 +369,12 @@ impl Default for CertTemplateProperties {
             nosecurityextension: false,
             certificatenameflag: String::from(""),
             enrolleesuppliessubject: false,
-            subjectaltrequireupn: true,
+            subjectaltrequireupn: false,
+            subjectaltrequiredns: false,
+            subjectaltrequiredomaindns: false,
+            subjectaltrequireemail: false,
+            subjectaltrequirespn: false,
+            subjectrequireemail: false,
             ekus: Vec::new(),
             certificateapplicationpolicy: Vec::new(),
             authorizedsignatures: 0,
@@ -375,5 +390,87 @@ impl CertTemplateProperties {
     // Immutable access.
     pub fn name(&self) -> &String {
         &self.name
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SUBJECT_NAME_FLAG_PROPERTIES: [&str; 6] = [
+        "subjectaltrequiredomaindns",
+        "subjectaltrequirespn",
+        "subjectaltrequireupn",
+        "subjectaltrequireemail",
+        "subjectaltrequiredns",
+        "subjectrequireemail",
+    ];
+
+    fn parse_certtemplate_with_name_flag(flag: Option<i64>) -> CertTemplate {
+        let mut attrs = HashMap::new();
+        attrs.insert("name".to_string(), vec!["RustHoundLab".to_string()]);
+        if let Some(flag) = flag {
+            attrs.insert(
+                "msPKI-Certificate-Name-Flag".to_string(),
+                vec![flag.to_string()],
+            );
+        }
+
+        let result = SearchEntry {
+            dn: "CN=RustHoundLab,CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,DC=example,DC=local".to_string(),
+            attrs,
+            bin_attrs: HashMap::new(),
+        };
+        let mut certtemplate = CertTemplate::new();
+        let mut dn_sid = HashMap::new();
+        let mut sid_type = HashMap::new();
+
+        certtemplate
+            .parse(
+                result,
+                "example.local",
+                &mut dn_sid,
+                &mut sid_type,
+                "S-1-5-21-1-2-3",
+                &HashMap::new(),
+            )
+            .unwrap();
+
+        certtemplate
+    }
+
+    #[test]
+    fn parse_maps_each_subject_name_flag_to_its_boolean_property() {
+        let cases = [
+            (0x0040_0000, "subjectaltrequiredomaindns"),
+            (0x0080_0000, "subjectaltrequirespn"),
+            (0x0200_0000, "subjectaltrequireupn"),
+            (0x0400_0000, "subjectaltrequireemail"),
+            (0x0800_0000, "subjectaltrequiredns"),
+            (0x2000_0000, "subjectrequireemail"),
+        ];
+
+        for (flag, expected_property) in cases {
+            let certtemplate = parse_certtemplate_with_name_flag(Some(flag));
+            let properties = &certtemplate.to_json()["Properties"];
+
+            for property in SUBJECT_NAME_FLAG_PROPERTIES {
+                assert_eq!(
+                    properties[property],
+                    property == expected_property,
+                    "unexpected value for {property} with flag {flag:#010x}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn subject_name_flag_properties_default_to_false_when_attribute_is_absent() {
+        let certtemplate = parse_certtemplate_with_name_flag(None);
+        let properties = &certtemplate.to_json()["Properties"];
+
+        for property in SUBJECT_NAME_FLAG_PROPERTIES {
+            assert_eq!(properties[property], false, "{property} should default to false");
+        }
     }
 }

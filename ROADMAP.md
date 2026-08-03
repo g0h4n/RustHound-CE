@@ -411,11 +411,11 @@
         - [x] `Properties`:`issuancepolicies` :white_check_mark:
         - [x] `Properties`:`effectiveekus` :white_check_mark:
         - [x] `Properties`:`authenticationenabled` :white_check_mark:
-        - [ ] `Properties`:`subjectaltrequiredns` :red_circle:
-        - [ ] `Properties`:`subjectaltrequiredomaindns` :red_circle:
-        - [ ] `Properties`:`subjectaltrequireemail` :red_circle:
-        - [ ] `Properties`:`subjectaltrequirespn` :red_circle:
-        - [ ] `Properties`:`subjectrequireemail` :red_circle:
+        - [x] `Properties`:`subjectaltrequiredns` :white_check_mark:
+        - [x] `Properties`:`subjectaltrequiredomaindns` :white_check_mark:
+        - [x] `Properties`:`subjectaltrequireemail` :white_check_mark:
+        - [x] `Properties`:`subjectaltrequirespn` :white_check_mark:
+        - [x] `Properties`:`subjectrequireemail` :white_check_mark:
         - [ ] `Properties`:`schannelauthenticationenabled` :red_circle:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
