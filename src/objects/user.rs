@@ -152,6 +152,11 @@ impl User {
                 "scriptpath" => {
                     self.properties.logonscript = value[0].to_owned();
                 }
+                "profilePath" | "profilepath" => {
+                    if let Some(profile_path) = value.first() {
+                        self.properties.profilepath = profile_path.to_owned();
+                    }
+                }
                 "userAccountControl" => {
                     let uac = &value[0].parse::<u32>().unwrap_or(0);
                     self.properties.useraccountcontrol = *uac;
@@ -482,6 +487,7 @@ pub struct UserProperties {
     unixpassword: String,
     unicodepassword: String,
     sfupassword: String,
+    profilepath: String,
     admincount: bool,
     supportedencryptiontypes: Vec<String>,
     sidhistory: Vec<String>,
@@ -509,5 +515,72 @@ impl UserProperties {
     }
     pub fn isaclprotected_mut(&mut self) -> &mut bool {
         &mut self.isaclprotected
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_user_with_attrs(attrs: HashMap<String, Vec<String>>) -> User {
+        let mut user = User::new();
+        let result = SearchEntry {
+            dn: "CN=Test User,OU=Users,DC=example,DC=local".to_string(),
+            attrs,
+            bin_attrs: HashMap::new(),
+        };
+        let mut dn_sid = HashMap::new();
+        let mut sid_type = HashMap::new();
+        let schema_guid_map = HashMap::new();
+
+        user.parse(
+            result,
+            "example.local",
+            &mut dn_sid,
+            &mut sid_type,
+            "S-1-5-21-1-2-3",
+            &schema_guid_map,
+        )
+        .unwrap();
+
+        user
+    }
+
+    #[test]
+    fn parse_sets_profilepath_from_ldap_profile_path() {
+        let mut attrs = HashMap::new();
+        attrs.insert(
+            "sAMAccountName".to_string(),
+            vec!["rh.profilepath".to_string()],
+        );
+        attrs.insert(
+            "profilePath".to_string(),
+            vec![r"\\FILE01\Profiles\rh.profilepath".to_string()],
+        );
+
+        let user = parse_user_with_attrs(attrs);
+
+        assert_eq!(
+            user.properties.profilepath,
+            r"\\FILE01\Profiles\rh.profilepath"
+        );
+        assert_eq!(
+            user.to_json()["Properties"]["profilepath"],
+            r"\\FILE01\Profiles\rh.profilepath"
+        );
+    }
+
+    #[test]
+    fn parse_defaults_profilepath_to_empty_string_when_absent() {
+        let mut attrs = HashMap::new();
+        attrs.insert(
+            "sAMAccountName".to_string(),
+            vec!["rh.profilepath.control".to_string()],
+        );
+
+        let user = parse_user_with_attrs(attrs);
+
+        assert_eq!(user.properties.profilepath, "");
+        assert_eq!(user.to_json()["Properties"]["profilepath"], "");
     }
 }
