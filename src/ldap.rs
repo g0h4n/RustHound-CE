@@ -36,13 +36,14 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     ldapfqdn: &str,
     username: Option<&str>,
     password: Option<&str>,
+    ntlmhash: Option<&str>,
     kerberos: bool,
     ldapfilter: &str,
     storage: &mut S,
 ) -> Result<usize, Box<dyn Error>> {
     // Construct LDAP args
     let ldap_args = ldap_constructor(
-        ldaps, ip, port, domain, ldapfqdn, username, password, kerberos,
+        ldaps, ip, port, domain, ldapfqdn, username, password, ntlmhash, kerberos,
     )?;
 
     // LDAP connection
@@ -52,7 +53,29 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     let (conn, mut ldap) = LdapConnAsync::with_settings(consettings, &ldap_args.s_url).await?;
     ldap3::drive!(conn);
 
-    if !kerberos {
+    if let Some(ref ntlm_password) = ldap_args.s_ntlm_password {
+        debug!("Trying to connect with sasl_ntlm_bind() function (NTLM pass-the-hash)");
+        let res = ldap
+            .sasl_ntlm_bind(&ldap_args.s_username, ntlm_password)
+            .await?
+            .success();
+        match res {
+            Ok(_res) => {
+                info!(
+                    "Connected to {} Active Directory via NTLM!",
+                    domain.to_uppercase().bold().green()
+                );
+                info!("Starting data collection...");
+            }
+            Err(err) => {
+                error!(
+                    "Failed to authenticate to {} Active Directory via NTLM. Reason: {err}\n",
+                    domain.to_uppercase().bold().red()
+                );
+                process::exit(0x0100);
+            }
+        }
+    } else if !kerberos {
         debug!("Trying to connect with simple_bind() function (username:password)");
         let res = ldap
             .simple_bind(&ldap_args.s_username, &ldap_args.s_password)
@@ -212,6 +235,7 @@ struct LdapArgs {
     _s_email: String,
     s_username: String,
     s_password: String,
+    s_ntlm_password: Option<String>,
 }
 
 /// Function to prepare LDAP arguments.
@@ -223,6 +247,7 @@ fn ldap_constructor(
     ldapfqdn: &str,
     username: Option<&str>,
     password: Option<&str>,
+    ntlmhash: Option<&str>,
     kerberos: bool,
 ) -> Result<LdapArgs, Box<dyn Error>> {
     // Prepare ldap url
@@ -230,6 +255,8 @@ fn ldap_constructor(
 
     // Prepare full DC chain
     let s_dc = prepare_ldap_dc(domain);
+
+    let use_ntlm = ntlmhash.is_some();
 
     // Username prompt
     let mut s = String::new();
@@ -258,14 +285,35 @@ fn ldap_constructor(
         s_email.push_str(&_s_username.to_string());
         s_email.push_str("@");
         s_email.push_str(domain);
-        _s_username = s_email.to_string();
+        if !use_ntlm {
+            _s_username = s_email.to_string();
+        }
     } else {
         s_email = _s_username.to_string().to_lowercase();
     }
 
-    // Password prompt
+    // For NTLM, format username as DOMAIN\user for sspi
+    if use_ntlm && !_s_username.contains("\\") && !_s_username.contains("@") {
+        let domain_upper = domain.split('.').next().unwrap_or(domain).to_uppercase();
+        _s_username = format!("{}\\{}", domain_upper, _s_username);
+    }
+
+    // Validate and build NTLM password from hash if provided
+    let s_ntlm_password = match ntlmhash {
+        Some(hash) => {
+            let clean = hash.trim();
+            if clean.len() != 32 || !clean.chars().all(|c| c.is_ascii_hexdigit()) {
+                error!("Invalid NT hash: must be exactly 32 hex characters (e.g. aad3b435b51404eeaad3b435b51404ee)");
+                process::exit(0x0100);
+            }
+            Some(nt_hash_to_ntlm_password(clean))
+        }
+        None => None,
+    };
+
+    // Password prompt (skip when using NTLM hash)
     let mut _s_password: String = String::new();
-    if !_s_username.contains("not set") && !kerberos {
+    if !use_ntlm && !_s_username.contains("not set") && !kerberos {
         _s_password = match password {
             Some(p) => p.to_owned(),
             None => rpassword::prompt_password("Password: ").unwrap_or("not set".to_string()),
@@ -290,7 +338,11 @@ fn ldap_constructor(
     debug!("Domain: {}", domain);
     debug!("Username: {}", _s_username);
     debug!("Email: {}", s_email.to_lowercase());
-    debug!("Password: {}", _s_password);
+    if use_ntlm {
+        debug!("Auth: NTLM pass-the-hash");
+    } else {
+        debug!("Password: {}", _s_password);
+    }
     debug!("DC: {:?}", s_dc);
     debug!("Kerberos: {:?}", kerberos);
 
@@ -298,9 +350,37 @@ fn ldap_constructor(
         s_url: s_url.to_string(),
         _s_dc: s_dc,
         _s_email: s_email.to_string().to_lowercase(),
-        s_username: s_email.to_string().to_lowercase(),
+        s_username: if use_ntlm {
+            _s_username.to_string()
+        } else {
+            s_email.to_string().to_lowercase()
+        },
         s_password: _s_password.to_string(),
+        s_ntlm_password,
     })
+}
+
+/// Encode an NT hash into a password string that triggers pass-the-hash
+/// in the sspi crate's NTLM implementation.
+fn nt_hash_to_ntlm_password(hex_hash: &str) -> String {
+    let upper = hex_hash.to_uppercase();
+    let bytes = upper.as_bytes();
+
+    let mut password = String::new();
+
+    for pair in bytes.chunks(2) {
+        let low_byte = pair[0] as u32;
+        let high_byte = if pair.len() > 1 { pair[1] as u32 } else { 0 };
+        let code_point = (high_byte << 8) | low_byte;
+        password.push(char::from_u32(code_point).unwrap_or('\0'));
+    }
+
+    // Pad to exceed the 512-byte SSPI_CREDENTIALS_HASH_LENGTH_OFFSET
+    for _ in 0..256 {
+        password.push('\0');
+    }
+
+    password
 }
 
 /// Function to prepare LDAP url.
@@ -467,5 +547,60 @@ impl From<LdapSearchEntry> for SearchEntry {
             attrs: entry.attrs,
             bin_attrs: entry.bin_attrs,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nt_hash_encoding_roundtrip() {
+        let hash = "aad3b435b51404eeaad3b435b51404ee";
+        let password = nt_hash_to_ntlm_password(hash);
+
+        let utf16_bytes: Vec<u8> = password
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+
+        assert!(utf16_bytes.len() > 512);
+
+        let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
+        assert_eq!(hash_portion.len(), 32);
+
+        let expected_hex = hash.to_uppercase();
+        let expected_bytes = expected_hex.as_bytes();
+        assert_eq!(hash_portion, expected_bytes);
+    }
+
+    #[test]
+    fn nt_hash_encoding_all_zeros() {
+        let hash = "00000000000000000000000000000000";
+        let password = nt_hash_to_ntlm_password(hash);
+
+        let utf16_bytes: Vec<u8> = password
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+
+        assert!(utf16_bytes.len() > 512);
+        let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
+        assert_eq!(hash_portion, b"00000000000000000000000000000000");
+    }
+
+    #[test]
+    fn nt_hash_encoding_all_f() {
+        let hash = "ffffffffffffffffffffffffffffffff";
+        let password = nt_hash_to_ntlm_password(hash);
+
+        let utf16_bytes: Vec<u8> = password
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+
+        assert!(utf16_bytes.len() > 512);
+        let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
+        assert_eq!(hash_portion, b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
     }
 }
