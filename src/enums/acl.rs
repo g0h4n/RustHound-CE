@@ -12,17 +12,62 @@ use crate::enums::sid::sid_maker;
 use bitflags::bitflags;
 use log::{error, trace};
 
-/// This function allows to parse the attribut nTSecurityDescriptor from secdesc.rs
+/// Parses an object's `nTSecurityDescriptor` and updates its ACL protection state.
 /// <http://www.selfadsi.org/deep-inside/ad-security-descriptors.htm#SecurityDescriptorStructure>
 pub fn parse_ntsecuritydescriptor<T: LdapObject>(
     object: &mut T,
-    nt: &Vec<u8>,
+    nt: &[u8],
     entry_type: &str,
     result_attrs: &HashMap<String, Vec<String>>,
     result_bin: &HashMap<String, Vec<Vec<u8>>>,
     domain: &str,
     schema_guid_map: &HashMap<String, String>,
 ) -> Vec<AceTemplate> {
+    let (aces, is_acl_protected) = parse_security_descriptor(
+        object,
+        nt,
+        entry_type,
+        result_attrs,
+        result_bin,
+        domain,
+        schema_guid_map,
+    );
+    object.set_is_acl_protected(is_acl_protected);
+    aces
+}
+
+/// Parses a security descriptor stored in an attribute other than
+/// `nTSecurityDescriptor` without changing the object's ACL protection state.
+pub(crate) fn parse_embedded_security_descriptor<T: LdapObject>(
+    object: &mut T,
+    nt: &[u8],
+    entry_type: &str,
+    result_attrs: &HashMap<String, Vec<String>>,
+    result_bin: &HashMap<String, Vec<Vec<u8>>>,
+    domain: &str,
+    schema_guid_map: &HashMap<String, String>,
+) -> Vec<AceTemplate> {
+    parse_security_descriptor(
+        object,
+        nt,
+        entry_type,
+        result_attrs,
+        result_bin,
+        domain,
+        schema_guid_map,
+    )
+    .0
+}
+
+fn parse_security_descriptor<T: LdapObject>(
+    object: &mut T,
+    nt: &[u8],
+    entry_type: &str,
+    result_attrs: &HashMap<String, Vec<String>>,
+    result_bin: &HashMap<String, Vec<Vec<u8>>>,
+    domain: &str,
+    schema_guid_map: &HashMap<String, String>,
+) -> (Vec<AceTemplate>, bool) {
 
     // Fallback if dynamic schema_guid_map empty
     // Not used yet need to be validate for issue #35!
@@ -43,18 +88,8 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
     let secdesc: SecurityDescriptor = SecurityDescriptor::parse(nt).unwrap().1;
     trace!("SECURITY-DESCRIPTOR: {:?}", secdesc);
 
-    // Check for ACL protected for Bloodhound4.1+
-    // IsACLProtected
+    // Check for ACL protected for BloodHound 4.1+
     let acl_is_protected = has_control(secdesc.control, SecurityDescriptorFlags::DACL_PROTECTED);
-    //trace!("{} acl_is_protected: {:?}",object.properties().name,acl_is_protected);
-
-    match entry_type
-    {
-        "EnterpriseCA" | "RootCA" | "CertTemplate" => {
-            object.set_is_acl_protected(acl_is_protected);
-        }
-        _ => {}
-    }
 
     if secdesc.offset_owner as usize != 0 
     {
@@ -91,7 +126,7 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
             }
             Err(err) => error!("Error. Reason: {err}"),
         }
-        return relations_sacl;
+        return (relations_sacl, acl_is_protected);
     }
 
     if secdesc.offset_dacl as usize != 0 
@@ -117,9 +152,9 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
             }
             Err(err) => error!("Error. Reason: {err}"),
         }
-        return relations_dacl;
+        return (relations_dacl, acl_is_protected);
     }
-    relations_dacl
+    (relations_dacl, acl_is_protected)
 }
 
 /// Parse ace in acl and get correct values (thanks fox-it for bloodhound.py works)
