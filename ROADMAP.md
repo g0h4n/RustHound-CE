@@ -41,7 +41,7 @@
     - [ ] **All objects**
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:(this value will replace `IsACLProtected`)
+        - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
         - [ ] `Aces`:`InheritanceHash` :red_circle:
         - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
         - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
@@ -53,7 +53,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
@@ -98,7 +98,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`haslaps` :white_check_mark:
@@ -143,7 +143,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
@@ -192,7 +192,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
@@ -212,7 +212,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
@@ -238,7 +238,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `Properties`:`samaccountname` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
@@ -257,7 +257,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`highvalue` :white_check_mark:
         - [x] `ChildObjects` :white_check_mark:
         - [x] `Aces` :white_check_mark:
@@ -273,9 +273,8 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
-        - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`isaclprotected` :white_check_mark:
+        - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [x] `Properties`:`displayname` :white_check_mark:
         - [x] `Properties`:`certtemplateoid` :white_check_mark:
@@ -293,7 +292,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [x] `Properties`:`certthumbprints` :white_check_mark:
@@ -310,7 +309,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [ ] `Properties`:`crosscertificatepair` :red_circle: What value should be added to the output? (x509 cert)
@@ -333,7 +332,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [x] `Properties`:`certthumbprint` :white_check_mark:
@@ -354,7 +353,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [ ] `Properties`:`flags` :red_circle:
@@ -390,7 +389,7 @@
         - [x] `Properties`:`domainsid` :white_check_mark:
         - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
         - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
-        - [ ] `Properties`:`isaclprotected` :red_circle:
+        - [x] `Properties`:`isaclprotected` :white_check_mark:
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [x] `Properties`:`validityperiod` :white_check_mark:
