@@ -108,7 +108,7 @@ impl Ou {
                  "gPOtions" => {
                      self.properties.blocksinheritance = value[0].parse::<i64>().unwrap_or(0) == 1;
                  }
-                 "IsDeleted" => {
+                 "isDeleted" => {
                      self.is_deleted = true;
                  }
                  _ => {}

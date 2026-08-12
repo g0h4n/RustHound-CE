@@ -135,14 +135,24 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     // namingContexts: CN=Configuration,DC=domain,DC=local (needed for AD CS datas)
     if res.iter().any(|s| s.contains("Configuration")) {
         for cn in &res {
-            // Set control LDAP_SERVER_SD_FLAGS_OID to get nTSecurityDescriptor
+            //  Control 1: Set control LDAP_SERVER_SD_FLAGS_OID to get nTSecurityDescriptor
             // https://ldapwiki.com/wiki/LDAP_SERVER_SD_FLAGS_OID
-            let ctrls = RawControl {
+            let sd_flags = RawControl {
                 ctype: String::from("1.2.840.113556.1.4.801"),
                 crit: true,
-                val: Some(vec![48, 3, 2, 1, 5]),
+                val: Some(vec![48, 3, 2, 1, 5]),    // SEQUENCE { INTEGER 5 }
             };
-            ldap.with_controls(ctrls.to_owned());
+
+            // Control 2: LDAP_SERVER_SHOW_DELETED_OID (deleted objects)
+            // https://ldapwiki.com/wiki/IsDeleted 
+            let show_deleted = RawControl {
+                ctype: String::from("1.2.840.113556.1.4.417"),
+                crit: false,    // false ignored if not supported
+                val: None,
+            };
+
+            let controls = vec![sd_flags, show_deleted];
+            ldap.with_controls(controls.to_owned());
 
             // Prepare filter
             // let mut _s_filter: &str = "";

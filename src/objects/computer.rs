@@ -292,7 +292,7 @@ impl Computer {
                 "primaryGroupID" => {
                     group_id = value[0].to_owned();
                 }
-                "IsDeleted" => {
+                "isDeleted" => {
                     self.is_deleted = true;
                 }
                 "msDS-SupportedEncryptionTypes" => {

@@ -103,7 +103,7 @@ impl Fsp {
                         self.properties.domainsid = domain_sid[0].to_owned().to_string();
                     }
                 }
-                "IsDeleted" => {
+                "isDeleted" => {
                     self.is_deleted = true;
                 }
                 _ => {}

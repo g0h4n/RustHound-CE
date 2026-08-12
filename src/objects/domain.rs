@@ -139,7 +139,7 @@ impl Domain {
                         info!("MachineAccountQuota: {}", machine_account_quota.to_string().yellow().bold());
                     }
                 }
-                "IsDeleted" => {
+                "isDeleted" => {
                     self.is_deleted = true;
                 }
                 "msDS-ExpirePasswordsOnSmartCardOnlyAccounts" => {

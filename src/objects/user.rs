@@ -276,10 +276,7 @@ impl User {
                 "primaryGroupID" => {
                     group_id = value[0].to_owned();
                 }
-                "IsDeleted" => {
-                    // OID to use: 1.2.840.113556.1.4.417
-                    // https://ldapwiki.com/wiki/IsDeleted
-                    //trace!("isDeleted: {:?}",&value[0]);
+                "isDeleted" => {
                     self.is_deleted = true;
                 }
                 "msDS-SupportedEncryptionTypes" => {

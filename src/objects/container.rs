@@ -107,7 +107,7 @@ impl Container {
                     );
                     self.aces = relations_ace;
                 }
-                "IsDeleted" => {
+                "isDeleted" => {
                     self.is_deleted = true;
                 }
                 _ => {}

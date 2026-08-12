@@ -163,7 +163,7 @@ impl Group {
                         self.properties.whencreated = epoch;
                     }
                 }
-                "IsDeleted" => {
+                "isDeleted" => {
                     self.is_deleted = true;
                 }
                 _ => {}

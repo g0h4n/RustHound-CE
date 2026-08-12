@@ -87,7 +87,7 @@
         - [x] `Links` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
     
@@ -132,7 +132,7 @@
         - [x] `DomainSID` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -181,7 +181,7 @@
         - [x] `DomainSID` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -201,7 +201,7 @@
         - [x] `Members` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -227,7 +227,7 @@
         - [x] `ChildObjects` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -246,7 +246,7 @@
         - [x] `Properties`:`gpcpath` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -262,7 +262,7 @@
         - [x] `ChildObjects` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -282,7 +282,7 @@
         - [ ] `GroupLink` :red_circle:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [ ] `ContainedBy` :red_circle:
 
@@ -299,7 +299,7 @@
         - [x] `Properties`:`certthumbprints` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -322,7 +322,7 @@
         - [x] `Properties`:`basicconstraintpathlength` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -343,7 +343,7 @@
         - [x] `Properties`:`basicconstraintpathlength` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -379,7 +379,7 @@
         - [ ] `HttpEnrollmentEndpoints` :red_circle:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
 
@@ -419,6 +419,6 @@
         - [ ] `Properties`:`schannelauthenticationenabled` :red_circle:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
-        - [x] `IsDeleted` :white_check_mark:
+        - [x] `isDeleted` :white_check_mark:
         - [x] `IsACLProtected` :white_check_mark:
         - [x] `ContainedBy` :white_check_mark:
