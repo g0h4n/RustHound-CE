@@ -23,7 +23,7 @@ pub struct Options {
     pub ldaps: bool,
     pub dns_tcp: bool,
     pub fqdn_resolver: bool,
-    pub ntlmhash: Option<String>,
+    pub hashes: Option<String>,
     pub kerberos: bool,
     pub zip: bool,
     pub verbose: log::LevelFilter,
@@ -77,10 +77,10 @@ fn cli() -> Command {
         .required(false)
         .value_parser(value_parser!(String))
     )
-    .arg(Arg::new("ntlmhash")
+    .arg(Arg::new("hashes")
         .short('H')
-        .long("ntlmhash")
-        .help("NTLM hash for pass-the-hash authentication")
+        .long("hashes")
+        .help("NT hash for pass-the-hash authentication (NTLM), accept [NTHASH, :NTHASH, LMHASH:NTHASH]")
         .required(false)
         .value_parser(value_parser!(String))
     )
@@ -214,8 +214,8 @@ pub fn extract_args() -> Options {
     let password = matches
         .get_one::<String>("ldappassword")
         .map(|s| s.to_owned());
-    let ntlmhash = matches
-        .get_one::<String>("ntlmhash")
+    let hashes = matches
+        .get_one::<String>("hashes")
         .map(|s| s.to_owned());
     let f = matches
         .get_one::<String>("ldapfqdn")
@@ -278,7 +278,7 @@ pub fn extract_args() -> Options {
         domain: d.to_string(),
         username,
         password,
-        ntlmhash,
+        hashes,
         ldapfqdn: f.to_string(),
         ip,
         port,
@@ -350,7 +350,7 @@ pub fn auto_args() -> Options {
         ldaps: ldaps,
         dns_tcp: false,
         fqdn_resolver: false,
-        ntlmhash: None,
+        hashes: None,
         kerberos: true,
         zip: true,
         verbose: log::LevelFilter::Info,

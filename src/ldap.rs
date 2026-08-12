@@ -36,14 +36,14 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     ldapfqdn: &str,
     username: Option<&str>,
     password: Option<&str>,
-    ntlmhash: Option<&str>,
+    hashes: Option<&str>,
     kerberos: bool,
     ldapfilter: &str,
     storage: &mut S,
 ) -> Result<usize, Box<dyn Error>> {
     // Construct LDAP args
     let ldap_args = ldap_constructor(
-        ldaps, ip, port, domain, ldapfqdn, username, password, ntlmhash, kerberos,
+        ldaps, ip, port, domain, ldapfqdn, username, password, hashes, kerberos,
     )?;
 
     // LDAP connection
@@ -247,7 +247,7 @@ fn ldap_constructor(
     ldapfqdn: &str,
     username: Option<&str>,
     password: Option<&str>,
-    ntlmhash: Option<&str>,
+    hashes: Option<&str>,
     kerberos: bool,
 ) -> Result<LdapArgs, Box<dyn Error>> {
     // Prepare ldap url
@@ -256,7 +256,7 @@ fn ldap_constructor(
     // Prepare full DC chain
     let s_dc = prepare_ldap_dc(domain);
 
-    let use_ntlm = ntlmhash.is_some();
+    let use_ntlm = hashes.is_some();
 
     // Username prompt
     let mut s = String::new();
@@ -298,15 +298,20 @@ fn ldap_constructor(
         _s_username = format!("{}\\{}", domain_upper, _s_username);
     }
 
-    // Validate and build NTLM password from hash if provided
-    let s_ntlm_password = match ntlmhash {
+    // Validate and build NTLM password from NT hash if provided
+    let s_ntlm_password = match hashes {
         Some(hash) => {
             let clean = hash.trim();
-            if clean.len() != 32 || !clean.chars().all(|c| c.is_ascii_hexdigit()) {
+            // Accept [NTHASH, :NTHASH, LMHASH:NTHASH]
+            let nt = match clean.split_once(':') {
+                Some((_lm, nt)) => nt,
+                None => clean,
+            };
+            if nt.len() != 32 || !nt.chars().all(|c| c.is_ascii_hexdigit()) {
                 error!("Invalid NT hash: must be exactly 32 hex characters (e.g. aad3b435b51404eeaad3b435b51404ee)");
                 process::exit(0x0100);
             }
-            Some(nt_hash_to_ntlm_password(clean))
+            Some(nt_hash_to_ntlm_password(nt))
         }
         None => None,
     };
@@ -321,7 +326,7 @@ fn ldap_constructor(
     } else {
         _s_password = password.unwrap_or("not set").to_owned();
     }
-
+    
     // Print infos if verbose mod is set
     debug!("IP: {}", match ip {
         Some(ip) => ip,

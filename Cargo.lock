@@ -2204,7 +2204,7 @@ dependencies = [
 
 [[package]]
 name = "rusthound-ce"
-version = "2.4.92"
+version = "2.5.0"
 dependencies = [
  "bincode",
  "bitflags 2.13.1",
