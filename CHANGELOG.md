@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.0 - 2026-08-12
+
+This version implements one PR ([#41](https://github.com/g0h4n/RustHound-CE/pull/41)) with the following changes:
+
+- Add NTLM pass-the-hash (PtH) authentication support. An NT hash can now be supplied instead of a password, encoded into a credential string that triggers pass-the-hash in the `sspi` crate's NTLM implementation. Thanks [@AlexLinov](https://github.com/AlexLinov)!
+- Accept NT hashes in plain (`NTHASH`), empty-LM (`:NTHASH`), and full (`LMHASH:NTHASH`) formats, matching the conventions used by tools like impacket and netexec
+- Validate that the NT hash is exactly 32 hexadecimal characters before use
+
 ## 2.4.92 - 2026-08-03
 
 This version implements two PRs ([#37](https://github.com/g0h4n/RustHound-CE/pull/37), [#38](https://github.com/g0h4n/RustHound-CE/pull/38)) with the following changes:

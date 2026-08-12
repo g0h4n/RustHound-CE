@@ -8,7 +8,7 @@
   - [x] LDAP (389) :white_check_mark:
   - [x] LDAPS (636) :white_check_mark:
   - [x] `BIND` :white_check_mark:
-  - [x] `NTLM` :white_check_mark: (branch: [feat/ntlm-support](https://github.com/g0h4n/RustHound-CE/tree/feat/ntlm-support))
+  - [x] `NTLM` :white_check_mark:
   - [x] `Kerberos` :white_check_mark:
   - [x] Prompt for password :white_check_mark:
 

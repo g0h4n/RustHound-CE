@@ -6,7 +6,7 @@ keywords = ["bloodhound", "pentest", "ldap", "tokio", "async"]
 repository = "https://github.com/g0h4n/RustHound-CE"
 homepage = "https://github.com/g0h4n/RustHound-CE"
 documentation = "https://docs.rs/rusthound-ce/"
-version = "2.4.92"
+version = "2.5.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -29,7 +29,9 @@ x509-parser = "0.16"
 trust-dns-resolver = "0.23"
 zip = { version = "4.2.0", default-features = false, features = ["deflate"] }
 rpassword = "7.2"
-ldap3 = { version = "0.11.5", default-features = false }
+ldap3 = { version = "0.12.1", default-features = false }
+picky-krb = "=0.11.1"
+picky = "=7.0.0-rc.17"
 winreg = { version = "0.52", optional = true }
 sha1 = "0.10"
 regex = "1"
@@ -39,8 +41,8 @@ obfstr = "0.4.1"
 
 [features]
 noargs = ["winreg"] # Only available for Windows
-nogssapi = ["ldap3/tls-rustls"] # Used for linux_musl armv7 and macos compilation
-default = ["ldap3/tls-rustls","ldap3/gssapi"]
+nogssapi = ["ldap3/tls-rustls-ring", "ldap3/ntlm"] # Used for linux_musl armv7 and macos compilation
+default = ["ldap3/tls-rustls-ring", "ldap3/gssapi", "ldap3/ntlm"]
 
 [profile.release]
 opt-level = "z"
