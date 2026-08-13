@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.1 - 2026-08-12
+
+Issue [#39](https://github.com/g0h4n/RustHound-CE/issues/39) reported by [@halilkirazkaya](https://github.com/halilkirazkaya), RustHound-CE did not collect deleted objects (tombstones).
+
+Deleted objects are now collected by attaching the `LDAP_SERVER_SHOW_DELETED_OID` control (`1.2.840.113556.1.4.417`) to the LDAP search and querying the `CN=Deleted Objects` container. This surfaces tombstoned AD objects in BloodHound CE.
+
 ## 2.5.0 - 2026-08-12
 
 This version implements one PR ([#41](https://github.com/g0h4n/RustHound-CE/pull/41)) with the following changes:

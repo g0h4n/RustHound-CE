@@ -257,7 +257,7 @@ OPTIONAL MODULES:
 # Linux with username:password
 rusthound-ce -d north.sevenkingdoms.local -u 'jeor.mormont@north.sevenkingdoms.local' -p '_L0ngCl@w_' -o /tmp/demo -z
 
-# Linux with username: nt hash (Pass The Hash)
+# Linux with username: nt hash (Pass The Hash) PTH for NTLM
 rusthound-ce -d sevenkingdoms.local -u 'vagrant' -H e02bc503339d51f71d913c245d35b50b -o /tmp/demo -z
 
 # Linux with username:password DCOnly collection method
@@ -278,7 +278,7 @@ rusthound-ce -d north.sevenkingdoms.local --ldaps -u 'jeor.mormont@north.sevenki
 rusthound-ce.exe -d sevenkingdoms.local --ldapfqdn kingslanding
 # Windows simple bind connection username:password (do not use single or double quotes with cmd.exe)
 rusthound-ce.exe -d sevenkingdoms.local -u jeor.mormont@north.sevenkingdoms.local -p _L0ngCl@w_ -o output -z
-# Windows NT hash authentication (Pass The Hash)
+# Windows NT hash authentication (Pass The Hash) PTH for NTLM
 rusthound-ce.exe -d sevenkingdoms.local -u vagrant -H :e02bc503339d51f71d913c245d35b50b -z
 
 # Kerberos authentication (Linux)
