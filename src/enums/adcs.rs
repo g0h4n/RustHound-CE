@@ -336,10 +336,16 @@ pub fn templates_enabled_change_displayname_to_sid(
         let mut enabled_cert_templates: Vec<Member> = Vec::new();
         for template in templates {
             let mut member = Member::new();
-            // println!("{:?}",&template.object_identifier());
-            if let Some(value) = name_sid.keys()
-            .find(|&key| key.contains(&template.object_identifier().to_uppercase()))
-            .and_then(|key| name_sid.get(key))
+            let needle = template.object_identifier().to_uppercase();
+            // When several template names match, pick the smallest key
+            // deterministically instead of relying on HashMap iteration order
+            // (which otherwise makes the published-templates edges vary run-to-run,
+            // affecting ADCS attack-path analysis).
+            if let Some(value) = name_sid
+                .keys()
+                .filter(|key| key.contains(&needle))
+                .min()
+                .and_then(|key| name_sid.get(key))
             {
                 *member.object_identifier_mut() = value.to_owned();
                 *member.object_type_mut() = template.object_type().to_owned();

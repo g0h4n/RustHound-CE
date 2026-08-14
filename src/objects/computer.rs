@@ -131,9 +131,16 @@ impl Computer {
         for (key, value) in &result_attrs {
             match key.as_str() {
                 "name" => {
-                    let name = &value[0];
-                    let email = format!("{}.{}",name.to_owned(),domain);
-                    self.properties.name = email.to_uppercase();
+                    // dNSHostName (the FQDN) is the canonical computer name and
+                    // must win. Only fall back to the `name` attribute when there
+                    // is no dNSHostName; otherwise, since both arms write
+                    // properties.name, the winner would depend on HashMap
+                    // iteration order and vary run-to-run.
+                    if !result_attrs.contains_key("dNSHostName") {
+                        let name = &value[0];
+                        let email = format!("{}.{}",name.to_owned(),domain);
+                        self.properties.name = email.to_uppercase();
+                    }
                 }
                 "sAMAccountName" => {
                     self.properties.samaccountname = value[0].to_owned();
