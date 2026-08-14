@@ -46,6 +46,31 @@ where
     }
 }
 
+impl<T, R: Read> BincodeIterator<T, R> {
+    /// Read the next length-prefixed record as raw bytes, WITHOUT decoding it.
+    ///
+    /// Decoding (bincode) is CPU-heavy; reading the raw blob here (cheap I/O)
+    /// lets the caller push the decode work onto worker threads instead of
+    /// paying for it single-threaded on the reader thread.
+    pub fn next_raw(&mut self) -> Option<std::io::Result<Vec<u8>>> {
+        let mut len_bytes = [0u8; 4];
+        match self.reader.read_exact(&mut len_bytes) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return None,
+            Err(e) => return Some(Err(e)),
+        }
+
+        let len = u32::from_le_bytes(len_bytes) as usize;
+
+        let mut data = vec![0u8; len];
+        if let Err(e) = self.reader.read_exact(&mut data) {
+            return Some(Err(e));
+        }
+
+        Some(Ok(data))
+    }
+}
+
 impl<T, R: Read> Iterator for BincodeIterator<T, R>
 where
     T: bincode::Decode<()>,
