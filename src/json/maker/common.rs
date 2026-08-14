@@ -30,7 +30,7 @@ const SERIALIZE_BATCH: usize = 4096;
 /// Where a JSON collection is written: either straight into an entry of the
 /// shared zip archive, or into its own `.json` file on disk.
 enum Sink<'a> {
-    Zip(&'a mut ZipWriter<BufWriter<File>>),
+    Zip { writer: &'a mut ZipWriter<BufWriter<File>>, datetime: &'a str, domain: &'a str },
     Dir { path: &'a str, datetime: &'a str, domain: &'a str },
 }
 
@@ -94,14 +94,15 @@ where
     debug!("Making {name}.json");
 
     match sink {
-        Sink::Zip(writer) => {
+        Sink::Zip { writer, datetime, domain } => {
             // `large_file(true)` enables ZIP64, which is required for any entry
             // larger than 4 GiB. Without it the zip crate errors out on huge
             // domains, which is what caused the crash on large outputs.
             let options = SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated)
                 .large_file(true);
-            let filename = format!("{name}.json");
+            // Keep the original entry naming scheme: <datetime>_<domain>_<name>.json
+            let filename = format!("{datetime}_{domain}_{name}.json");
             trace!("Adding file {}", filename.bold());
             writer.start_file(&filename, options)?;
             write_json_document(*writer, name, vec_json)?;
@@ -173,7 +174,7 @@ pub fn make_a_zip(
 
     trace!("Making the ZIP file");
     {
-        let mut sink = Sink::Zip(&mut writer);
+        let mut sink = Sink::Zip { writer: &mut writer, datetime, domain };
         emit_all!(&mut sink, ad_results);
     }
     writer.finish()?.flush()?;
