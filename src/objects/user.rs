@@ -11,7 +11,9 @@ use crate::enums::regex::{OBJECT_SID_RE1, SID_PART1_RE1};
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::utils::date::{convert_timestamp, string_to_epoch};
 use crate::utils::crypto::convert_encryption_types;
-use crate::enums::acl::{parse_ntsecuritydescriptor, parse_gmsa};
+use crate::enums::acl::{
+    parse_embedded_security_descriptor, parse_gmsa, parse_ntsecuritydescriptor,
+};
 use crate::enums::secdesc::LdapSid;
 use crate::enums::sid::sid_maker;
 use crate::enums::spntasks::check_spn;
@@ -323,8 +325,8 @@ impl User {
                     self.properties.sidhistory = list_sid_history;
                 }
                 "msDS-GroupMSAMembership" => {
-                    // nTSecurityDescriptor raw to string
-                    let mut relations_ace = parse_ntsecuritydescriptor(
+                    // Embedded security descriptor granting gMSA password readers.
+                    let mut relations_ace = parse_embedded_security_descriptor(
                         self,
                         &value[0],
                         "User",

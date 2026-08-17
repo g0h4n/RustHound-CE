@@ -12,17 +12,62 @@ use crate::enums::sid::sid_maker;
 use bitflags::bitflags;
 use log::{error, trace};
 
-/// This function allows to parse the attribut nTSecurityDescriptor from secdesc.rs
+/// Parses an object's `nTSecurityDescriptor` and updates its ACL protection state.
 /// <http://www.selfadsi.org/deep-inside/ad-security-descriptors.htm#SecurityDescriptorStructure>
 pub fn parse_ntsecuritydescriptor<T: LdapObject>(
     object: &mut T,
-    nt: &Vec<u8>,
+    nt: &[u8],
     entry_type: &str,
     result_attrs: &HashMap<String, Vec<String>>,
     result_bin: &HashMap<String, Vec<Vec<u8>>>,
     domain: &str,
     schema_guid_map: &HashMap<String, String>,
 ) -> Vec<AceTemplate> {
+    let (aces, is_acl_protected) = parse_security_descriptor(
+        object,
+        nt,
+        entry_type,
+        result_attrs,
+        result_bin,
+        domain,
+        schema_guid_map,
+    );
+    object.set_is_acl_protected(is_acl_protected);
+    aces
+}
+
+/// Parses a security descriptor stored in an attribute other than
+/// `nTSecurityDescriptor` without changing the object's ACL protection state.
+pub(crate) fn parse_embedded_security_descriptor<T: LdapObject>(
+    object: &mut T,
+    nt: &[u8],
+    entry_type: &str,
+    result_attrs: &HashMap<String, Vec<String>>,
+    result_bin: &HashMap<String, Vec<Vec<u8>>>,
+    domain: &str,
+    schema_guid_map: &HashMap<String, String>,
+) -> Vec<AceTemplate> {
+    parse_security_descriptor(
+        object,
+        nt,
+        entry_type,
+        result_attrs,
+        result_bin,
+        domain,
+        schema_guid_map,
+    )
+    .0
+}
+
+fn parse_security_descriptor<T: LdapObject>(
+    object: &mut T,
+    nt: &[u8],
+    entry_type: &str,
+    result_attrs: &HashMap<String, Vec<String>>,
+    result_bin: &HashMap<String, Vec<Vec<u8>>>,
+    domain: &str,
+    schema_guid_map: &HashMap<String, String>,
+) -> (Vec<AceTemplate>, bool) {
 
     // Fallback if dynamic schema_guid_map empty
     // Not used yet need to be validate for issue #35!
@@ -43,18 +88,8 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
     let secdesc: SecurityDescriptor = SecurityDescriptor::parse(nt).unwrap().1;
     trace!("SECURITY-DESCRIPTOR: {:?}", secdesc);
 
-    // Check for ACL protected for Bloodhound4.1+
-    // IsACLProtected
+    // Check for ACL protected for BloodHound 4.1+
     let acl_is_protected = has_control(secdesc.control, SecurityDescriptorFlags::DACL_PROTECTED);
-    //trace!("{} acl_is_protected: {:?}",object.properties().name,acl_is_protected);
-
-    match entry_type
-    {
-        "EnterpriseCA" | "RootCA" | "CertTemplate" => {
-            object.set_is_acl_protected(acl_is_protected);
-        }
-        _ => {}
-    }
 
     if secdesc.offset_owner as usize != 0 
     {
@@ -91,7 +126,7 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
             }
             Err(err) => error!("Error. Reason: {err}"),
         }
-        return relations_sacl;
+        return (relations_sacl, acl_is_protected);
     }
 
     if secdesc.offset_dacl as usize != 0 
@@ -117,9 +152,9 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
             }
             Err(err) => error!("Error. Reason: {err}"),
         }
-        return relations_dacl;
+        return (relations_dacl, acl_is_protected);
     }
-    relations_dacl
+    (relations_dacl, acl_is_protected)
 }
 
 /// Parse ace in acl and get correct values (thanks fox-it for bloodhound.py works)
@@ -2727,4 +2762,183 @@ lazy_static! {
 
         values.iter().map(|&(k, v)| (k.to_string(), v.to_string())).collect::<HashMap<String, String>>()
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ldap3::SearchEntry;
+
+    fn security_descriptor(control: SecurityDescriptorFlags) -> Vec<u8> {
+        let mut descriptor = vec![1, 0];
+        descriptor.extend_from_slice(&control.bits().to_le_bytes());
+        descriptor.extend_from_slice(&[0; 16]);
+        descriptor
+    }
+
+    fn search_entry_with_binary_attribute(attribute: &str, value: Vec<u8>) -> SearchEntry {
+        SearchEntry {
+            dn: "CN=Test,DC=example,DC=local".to_string(),
+            attrs: HashMap::new(),
+            bin_attrs: HashMap::from([(attribute.to_string(), vec![value])]),
+        }
+    }
+
+    fn assert_acl_protection<T: LdapObject + Default>(entry_type: &str) {
+        let mut object = T::default();
+        let cases = [
+            (
+                SecurityDescriptorFlags::SELF_RELATIVE
+                    | SecurityDescriptorFlags::DACL_PROTECTED,
+                true,
+            ),
+            (SecurityDescriptorFlags::SELF_RELATIVE, false),
+        ];
+
+        for (control, expected) in cases {
+            let descriptor = security_descriptor(control);
+
+            parse_ntsecuritydescriptor(
+                &mut object,
+                &descriptor,
+                entry_type,
+                &HashMap::new(),
+                &HashMap::new(),
+                "EXAMPLE.LOCAL",
+                &HashMap::new(),
+            );
+
+            assert_eq!(*object.get_is_acl_protected(), expected);
+            let json = object.to_json();
+            assert_eq!(json["IsACLProtected"], expected);
+            assert_eq!(json["Properties"]["isaclprotected"], expected);
+        }
+    }
+
+    #[test]
+    fn acl_protection_is_set_for_all_security_descriptor_objects() {
+        assert_acl_protection::<crate::objects::domain::Domain>("Domain");
+        assert_acl_protection::<crate::objects::computer::Computer>("Computer");
+        assert_acl_protection::<crate::objects::user::User>("User");
+        assert_acl_protection::<crate::objects::group::Group>("Group");
+        assert_acl_protection::<crate::objects::ou::Ou>("OU");
+        assert_acl_protection::<crate::objects::gpo::Gpo>("Gpo");
+        assert_acl_protection::<crate::objects::container::Container>("Container");
+        assert_acl_protection::<crate::objects::inssuancepolicie::IssuancePolicie>(
+            "IssuancePolicie",
+        );
+        assert_acl_protection::<crate::objects::ntauthstore::NtAuthStore>("NtAuthStore");
+        assert_acl_protection::<crate::objects::aiaca::AIACA>("AIACA");
+        assert_acl_protection::<crate::objects::rootca::RootCA>("RootCA");
+        assert_acl_protection::<crate::objects::enterpriseca::EnterpriseCA>("EnterpriseCA");
+        assert_acl_protection::<crate::objects::certtemplate::CertTemplate>("CertTemplate");
+    }
+
+    #[test]
+    fn embedded_security_descriptors_do_not_change_acl_protection() {
+        let protected = security_descriptor(
+            SecurityDescriptorFlags::SELF_RELATIVE | SecurityDescriptorFlags::DACL_PROTECTED,
+        );
+        let unprotected = security_descriptor(SecurityDescriptorFlags::SELF_RELATIVE);
+        let empty_attrs = HashMap::new();
+        let empty_bin_attrs = HashMap::new();
+        let empty_schema = HashMap::new();
+
+        let mut user = User::new();
+        parse_ntsecuritydescriptor(
+            &mut user,
+            &protected,
+            "User",
+            &empty_attrs,
+            &empty_bin_attrs,
+            "EXAMPLE.LOCAL",
+            &empty_schema,
+        );
+        parse_embedded_security_descriptor(
+            &mut user,
+            &unprotected,
+            "User",
+            &empty_attrs,
+            &empty_bin_attrs,
+            "EXAMPLE.LOCAL",
+            &empty_schema,
+        );
+        assert!(*user.get_is_acl_protected());
+
+        let mut computer = crate::objects::computer::Computer::new();
+        parse_embedded_security_descriptor(
+            &mut computer,
+            &protected,
+            "Computer",
+            &empty_attrs,
+            &empty_bin_attrs,
+            "EXAMPLE.LOCAL",
+            &empty_schema,
+        );
+        assert!(!*computer.get_is_acl_protected());
+    }
+
+    #[test]
+    fn object_parsers_dispatch_embedded_security_descriptors_without_changing_acl_protection() {
+        let protected = security_descriptor(
+            SecurityDescriptorFlags::SELF_RELATIVE | SecurityDescriptorFlags::DACL_PROTECTED,
+        );
+        let unprotected = security_descriptor(SecurityDescriptorFlags::SELF_RELATIVE);
+        let mut dn_sid = HashMap::new();
+        let mut sid_type = HashMap::new();
+        let schema_guid_map = HashMap::new();
+
+        let mut user = User::new();
+        user.parse(
+            search_entry_with_binary_attribute("nTSecurityDescriptor", protected.clone()),
+            "EXAMPLE.LOCAL",
+            &mut dn_sid,
+            &mut sid_type,
+            "S-1-5-21-1-2-3",
+            &schema_guid_map,
+        )
+        .unwrap();
+        user.parse(
+            search_entry_with_binary_attribute("msDS-GroupMSAMembership", unprotected.clone()),
+            "EXAMPLE.LOCAL",
+            &mut dn_sid,
+            &mut sid_type,
+            "S-1-5-21-1-2-3",
+            &schema_guid_map,
+        )
+        .unwrap();
+        assert!(*user.get_is_acl_protected());
+
+        let mut computer = crate::objects::computer::Computer::new();
+        let mut fqdn_sid = HashMap::new();
+        let mut fqdn_ip = HashMap::new();
+        computer
+            .parse(
+                search_entry_with_binary_attribute("nTSecurityDescriptor", unprotected),
+                "EXAMPLE.LOCAL",
+                &mut dn_sid,
+                &mut sid_type,
+                &mut fqdn_sid,
+                &mut fqdn_ip,
+                "S-1-5-21-1-2-3",
+                &schema_guid_map,
+            )
+            .unwrap();
+        computer
+            .parse(
+                search_entry_with_binary_attribute(
+                    "msDS-AllowedToActOnBehalfOfOtherIdentity",
+                    protected,
+                ),
+                "EXAMPLE.LOCAL",
+                &mut dn_sid,
+                &mut sid_type,
+                &mut fqdn_sid,
+                &mut fqdn_ip,
+                "S-1-5-21-1-2-3",
+                &schema_guid_map,
+            )
+            .unwrap();
+        assert!(!*computer.get_is_acl_protected());
+    }
 }
