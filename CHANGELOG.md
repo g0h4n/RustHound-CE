@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.2 - 2026-08-17
+
+Pull Request [#45](https://github.com/g0h4n/RustHound-CE/pull/45) fixes ACL parsing so IsACLProtected is now derived from each object's own nTSecurityDescriptor, with embedded gMSA and RBCD security descriptors parsed separately. Thanks to [@karanabe](https://github.com/karanabe) for this clean and useful contribution!
+
 ## 2.5.1 - 2026-08-12
 
 Issue [#39](https://github.com/g0h4n/RustHound-CE/issues/39) reported by [@halilkirazkaya](https://github.com/halilkirazkaya), RustHound-CE did not collect deleted objects (tombstones).
