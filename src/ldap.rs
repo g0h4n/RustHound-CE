@@ -53,10 +53,10 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     let (conn, mut ldap) = LdapConnAsync::with_settings(consettings, &ldap_args.s_url).await?;
     ldap3::drive!(conn);
 
-    if let Some(ref ntlm_password) = ldap_args.s_ntlm_password {
-        debug!("Trying to connect with sasl_ntlm_bind() function (NTLM pass-the-hash)");
+    if let Some(ref nt_hash) = ldap_args.s_nt_hash {
+        debug!("Trying to connect with sasl_ntlmssp_bind_hash() (NTLMv2 pass-the-hash via ntlmssp)");
         let res = ldap
-            .sasl_ntlm_bind(&ldap_args.s_username, ntlm_password)
+            .sasl_ntlmssp_bind_hash(&ldap_args.s_domain, &ldap_args.s_sam_account, nt_hash)
             .await?
             .success();
         match res {
@@ -245,7 +245,9 @@ struct LdapArgs {
     _s_email: String,
     s_username: String,
     s_password: String,
-    s_ntlm_password: Option<String>,
+    s_nt_hash: Option<[u8; 16]>,
+    s_domain: String,
+    s_sam_account: String,
 }
 
 /// Function to prepare LDAP arguments.
@@ -302,26 +304,32 @@ fn ldap_constructor(
         s_email = _s_username.to_string().to_lowercase();
     }
 
-    // For NTLM, format username as DOMAIN\user for sspi
-    if use_ntlm && !_s_username.contains("\\") && !_s_username.contains("@") {
-        let domain_upper = domain.split('.').next().unwrap_or(domain).to_uppercase();
-        _s_username = format!("{}\\{}", domain_upper, _s_username);
-    }
+    // Extract SAM account name (strip DOMAIN\ or @domain if present)
+    let s_sam_account = if let Some((_dom, user)) = _s_username.split_once('\\') {
+        user.to_string()
+    } else if let Some((user, _dom)) = _s_username.split_once('@') {
+        user.to_string()
+    } else {
+        _s_username.clone()
+    };
 
-    // Validate and build NTLM password from NT hash if provided
-    let s_ntlm_password = match hashes {
+    // Parse NT hash from hex to raw bytes
+    let s_nt_hash = match hashes {
         Some(hash) => {
             let clean = hash.trim();
-            // Accept [NTHASH, :NTHASH, LMHASH:NTHASH]
-            let nt = match clean.split_once(':') {
+            let nt_hex = match clean.split_once(':') {
                 Some((_lm, nt)) => nt,
                 None => clean,
             };
-            if nt.len() != 32 || !nt.chars().all(|c| c.is_ascii_hexdigit()) {
+            if nt_hex.len() != 32 || !nt_hex.chars().all(|c| c.is_ascii_hexdigit()) {
                 error!("Invalid NT hash: must be exactly 32 hex characters (e.g. aad3b435b51404eeaad3b435b51404ee)");
                 process::exit(0x0100);
             }
-            Some(nt_hash_to_ntlm_password(nt))
+            let mut hash_bytes = [0u8; 16];
+            for (i, chunk) in nt_hex.as_bytes().chunks(2).enumerate() {
+                hash_bytes[i] = u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16).unwrap();
+            }
+            Some(hash_bytes)
         }
         None => None,
     };
@@ -371,32 +379,12 @@ fn ldap_constructor(
             s_email.to_string().to_lowercase()
         },
         s_password: _s_password.to_string(),
-        s_ntlm_password,
+        s_nt_hash,
+        s_domain: domain.to_string(),
+        s_sam_account,
     })
 }
 
-/// Encode an NT hash into a password string that triggers pass-the-hash
-/// in the sspi crate's NTLM implementation.
-fn nt_hash_to_ntlm_password(hex_hash: &str) -> String {
-    let upper = hex_hash.to_uppercase();
-    let bytes = upper.as_bytes();
-
-    let mut password = String::new();
-
-    for pair in bytes.chunks(2) {
-        let low_byte = pair[0] as u32;
-        let high_byte = if pair.len() > 1 { pair[1] as u32 } else { 0 };
-        let code_point = (high_byte << 8) | low_byte;
-        password.push(char::from_u32(code_point).unwrap_or('\0'));
-    }
-
-    // Pad to exceed the 512-byte SSPI_CREDENTIALS_HASH_LENGTH_OFFSET
-    for _ in 0..256 {
-        password.push('\0');
-    }
-
-    password
-}
 
 /// Function to prepare LDAP url.
 fn prepare_ldap_url(
@@ -567,55 +555,34 @@ impl From<LdapSearchEntry> for SearchEntry {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
-    fn nt_hash_encoding_roundtrip() {
-        let hash = "aad3b435b51404eeaad3b435b51404ee";
-        let password = nt_hash_to_ntlm_password(hash);
-
-        let utf16_bytes: Vec<u8> = password
-            .encode_utf16()
-            .flat_map(|u| u.to_le_bytes())
-            .collect();
-
-        assert!(utf16_bytes.len() > 512);
-
-        let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
-        assert_eq!(hash_portion.len(), 32);
-
-        let expected_hex = hash.to_uppercase();
-        let expected_bytes = expected_hex.as_bytes();
-        assert_eq!(hash_portion, expected_bytes);
+    fn nt_hash_hex_to_bytes() {
+        let hex = "aad3b435b51404eeaad3b435b51404ee";
+        let mut bytes = [0u8; 16];
+        for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+            bytes[i] = u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16).unwrap();
+        }
+        assert_eq!(bytes, [0xaa, 0xd3, 0xb4, 0x35, 0xb5, 0x14, 0x04, 0xee,
+                           0xaa, 0xd3, 0xb4, 0x35, 0xb5, 0x14, 0x04, 0xee]);
     }
 
     #[test]
-    fn nt_hash_encoding_all_zeros() {
-        let hash = "00000000000000000000000000000000";
-        let password = nt_hash_to_ntlm_password(hash);
-
-        let utf16_bytes: Vec<u8> = password
-            .encode_utf16()
-            .flat_map(|u| u.to_le_bytes())
-            .collect();
-
-        assert!(utf16_bytes.len() > 512);
-        let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
-        assert_eq!(hash_portion, b"00000000000000000000000000000000");
+    fn nt_hash_colon_prefix() {
+        let input = ":aad3b435b51404eeaad3b435b51404ee";
+        let nt_hex = match input.split_once(':') {
+            Some((_lm, nt)) => nt,
+            None => input,
+        };
+        assert_eq!(nt_hex, "aad3b435b51404eeaad3b435b51404ee");
     }
 
     #[test]
-    fn nt_hash_encoding_all_f() {
-        let hash = "ffffffffffffffffffffffffffffffff";
-        let password = nt_hash_to_ntlm_password(hash);
-
-        let utf16_bytes: Vec<u8> = password
-            .encode_utf16()
-            .flat_map(|u| u.to_le_bytes())
-            .collect();
-
-        assert!(utf16_bytes.len() > 512);
-        let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
-        assert_eq!(hash_portion, b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+    fn nt_hash_lm_nt_pair() {
+        let input = "aad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0";
+        let nt_hex = match input.split_once(':') {
+            Some((_lm, nt)) => nt,
+            None => input,
+        };
+        assert_eq!(nt_hex, "31d6cfe0d16ae931b73c59d7e0c089c0");
     }
 }

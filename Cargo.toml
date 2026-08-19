@@ -29,7 +29,7 @@ x509-parser = "0.16"
 trust-dns-resolver = "0.23"
 zip = { version = "4.2.0", default-features = false, features = ["deflate"] }
 rpassword = "7.2"
-ldap3 = { version = "0.12.1", default-features = false }
+ldap3 = { git = "https://github.com/icedracon/ldap3-ntlmssp", branch = "feat/ntlmssp-pth", default-features = false }
 picky-krb = "=0.11.1"
 picky = "=7.0.0-rc.17"
 winreg = { version = "0.52", optional = true }
@@ -41,8 +41,8 @@ obfstr = "0.4.1"
 
 [features]
 noargs = ["winreg"] # Only available for Windows
-nogssapi = ["ldap3/tls-rustls-ring", "ldap3/ntlm"] # Used for linux_musl armv7 and macos compilation
-default = ["ldap3/tls-rustls-ring", "ldap3/gssapi", "ldap3/ntlm"]
+nogssapi = ["ldap3/tls-rustls-ring", "ldap3/ntlmssp-pth"] # Used for linux_musl armv7 and macos compilation
+default = ["ldap3/tls-rustls-ring", "ldap3/gssapi", "ldap3/ntlmssp-pth"]
 
 [profile.release]
 opt-level = "z"
