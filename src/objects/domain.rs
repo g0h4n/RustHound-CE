@@ -145,6 +145,10 @@ impl Domain {
                 "msDS-ExpirePasswordsOnSmartCardOnlyAccounts" => {
                     self.properties.expirepasswordsonsmartcardonlyaccounts = true;
                 }
+                "dSHeuristics" => {
+                    // A tiny string with a surprisingly large responsibility.
+                    self.properties.dsheuristics = value[0].to_owned();
+                }
                 "minPwdLength" => {
                     self.properties.minpwdlength = value[0].parse::<i32>().unwrap_or(0);
                 }
@@ -316,6 +320,7 @@ pub struct DomainProperties {
     lockoutduration: String,
     lockoutobservationwindow: i64,
     functionallevel: String,
+    dsheuristics: String,
     collected: bool
 }
 
@@ -333,4 +338,38 @@ impl DomainProperties {
     pub fn distinguishedname_mut(&mut self) -> &mut String {
         &mut self.distinguishedname
      }
-} 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_preserves_dsheuristics_value() {
+        let mut domain = Domain::new();
+        let result = SearchEntry {
+            dn: "DC=example,DC=local".to_string(),
+            attrs: HashMap::from([(
+                "dSHeuristics".to_string(),
+                vec!["0000000001000001".to_string()],
+            )]),
+            bin_attrs: HashMap::new(),
+        };
+        let mut dn_sid = HashMap::new();
+        let mut sid_type = HashMap::new();
+        let schema_guid_map = HashMap::new();
+
+        domain
+            .parse(
+                result,
+                "example.local",
+                &mut dn_sid,
+                &mut sid_type,
+                &schema_guid_map,
+            )
+            .unwrap();
+
+        assert_eq!(domain.properties.dsheuristics, "0000000001000001");
+        assert_eq!(domain.to_json()["Properties"]["dsheuristics"], "0000000001000001");
+    }
+}
