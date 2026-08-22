@@ -355,6 +355,16 @@ impl Computer {
                     }
                     self.allowed_to_act = vec_members_allowtoact;
                 }
+                "sIDHistory" => {
+                    // Computers can carry SID history too; old permissions can travel with it.
+                    let mut list_sid_history: Vec<String> = Vec::new();
+                    for bsid in value {
+                        debug!("sIDHistory: {:?}", &bsid);
+                        list_sid_history.push(sid_maker(LdapSid::parse(bsid).unwrap().1, domain));
+                    }
+                    self.properties.sidhistory = list_sid_history.clone();
+                    self.has_sid_history = list_sid_history;
+                }
                 _ => {}
             }
         }
@@ -510,5 +520,45 @@ impl ComputerProperties {
     }
     pub fn get_is_dc(&self) -> &bool {
         &self.is_dc
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_populates_has_sid_history() {
+        let mut computer = Computer::new();
+        let result = SearchEntry {
+            dn: "CN=TESTPC,OU=Computers,DC=example,DC=local".to_string(),
+            attrs: HashMap::new(),
+            bin_attrs: HashMap::from([(
+                "sIDHistory".to_string(),
+                vec![vec![1, 2, 0, 0, 0, 0, 0, 5, 21, 0, 0, 0, 0x15, 0xCD, 0x5B, 0x07]],
+            )]),
+        };
+        let mut dn_sid = HashMap::new();
+        let mut sid_type = HashMap::new();
+        let mut fqdn_sid = HashMap::new();
+        let mut fqdn_ip = HashMap::new();
+        let schema_guid_map = HashMap::new();
+
+        computer
+            .parse(
+                result,
+                "example.local",
+                &mut dn_sid,
+                &mut sid_type,
+                &mut fqdn_sid,
+                &mut fqdn_ip,
+                "S-1-5-21-1-2-3",
+                &schema_guid_map,
+            )
+            .unwrap();
+
+        // SID history: old permissions, new machine.
+        assert_eq!(computer.has_sid_history, vec!["S-1-5-21-123456789".to_string()]);
     }
 }
