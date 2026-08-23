@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.4 - 2026-08-23
+
+Pull Requests [#43](https://github.com/g0h4n/RustHound-CE/pull/43) and [#44](https://github.com/g0h4n/RustHound-CE/pull/44) make RustHound-CE scale on large domains: parallel parsing, checker and output with rayon, streamed ZIP64 JSON writing that fixes the crash on very large domains (800k+ objects), a mimalloc allocator, and deterministic resolution of computer names, ContainedBy and ADCS certificate templates so identical input produces identical output. Thanks to [@luckystars0612](https://github.com/luckystars0612) for these clean and useful contributions!
+
+## 2.5.3 - 2026-08-23
+
+Batch of contributions from [devdudumuniz](https://github.com/devdudumuniz): sIDHistory is now propagated to the top-level `HasSIDHistory` field on User ([#50](https://github.com/g0h4n/RustHound-CE/pull/50)) and Computer ([#51](https://github.com/g0h4n/RustHound-CE/pull/51)) objects, the domain `dSHeuristics` attribute is now collected ([#53](https://github.com/g0h4n/RustHound-CE/pull/53)), unit tests were added for the SID and GUID conversion helpers ([#52](https://github.com/g0h4n/RustHound-CE/pull/52)), and a `CONTRIBUTING.md` development guide was added ([#54](https://github.com/g0h4n/RustHound-CE/pull/54)). Thanks to [@devdudumuniz](https://github.com/devdudumuniz) for this clean and useful batch of contributions!
+
 ## 2.5.2 - 2026-08-17
 
 Pull Request [#45](https://github.com/g0h4n/RustHound-CE/pull/45) fixes ACL parsing so IsACLProtected is now derived from each object's own nTSecurityDescriptor, with embedded gMSA and RBCD security descriptors parsed separately. Thanks to [@karanabe](https://github.com/karanabe) for this clean and useful contribution!
