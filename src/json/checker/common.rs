@@ -283,7 +283,17 @@ pub fn add_default_users(
 fn build_sid_to_dn(dn_sid: &HashMap<String, String>) -> HashMap<&str, &str> {
     let mut sid_to_dn: HashMap<&str, &str> = HashMap::with_capacity(dn_sid.len());
     for (dn, sid) in dn_sid {
-        sid_to_dn.entry(sid.as_str()).or_insert(dn.as_str());
+        // When a SID maps to several DNs, keep the lexicographically smallest so
+        // the choice is deterministic instead of dependent on HashMap iteration
+        // order (which otherwise makes e.g. ContainedBy vary run-to-run).
+        sid_to_dn
+            .entry(sid.as_str())
+            .and_modify(|existing| {
+                if dn.as_str() < *existing {
+                    *existing = dn.as_str();
+                }
+            })
+            .or_insert(dn.as_str());
     }
     sid_to_dn
 }
