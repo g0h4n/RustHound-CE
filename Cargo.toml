@@ -13,7 +13,7 @@ readme = "README.md"
 rust-version = "1.85"
 
 [dependencies]
-tokio = "1.42.0"
+tokio = { version = "1.42.0", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 clap = "4.5.23"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
@@ -40,6 +40,11 @@ bincode = "2.0.1"
 obfstr = "0.4.1"
 rayon = "1.10"
 mimalloc = "0.1"
+# HasSession
+futures     = "0.3" 
+anyhow      = "1"
+smb2-client = "0.2"
+dcerpc      = { path = "../../dcerpc", version = "0.2.6" } # to replace with the official crate when the PR https://github.com/icedracon/dcerpc/pull/2 will be accepted
 
 [features]
 noargs = ["winreg"] # Only available for Windows

@@ -91,6 +91,15 @@ impl Computer {
     pub fn allowed_to_act_mut(&mut self) -> &mut Vec<Member> {
         &mut self.allowed_to_act
     }
+    pub fn sessions_mut(&mut self) -> &mut Session {
+        &mut self.sessions
+    }
+    pub fn privileged_sessions_mut(&mut self) -> &mut Session {
+        &mut self.privileged_sessions
+    }
+    pub fn registry_sessions_mut(&mut self) -> &mut Session {
+        &mut self.registry_sessions
+    }
 
     /// Function to parse and replace value for computer object.
     /// <https://bloodhound.readthedocs.io/en/latest/further-reading/json.html#computers>
@@ -528,8 +537,10 @@ impl ComputerProperties {
     pub fn get_is_dc(&self) -> &bool {
         &self.is_dc
     }
+    pub fn pwdlastset(&self) -> i64 { 
+        self.pwdlastset
+    }
 }
-
 
 #[cfg(test)]
 mod tests {
