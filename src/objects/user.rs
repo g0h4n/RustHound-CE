@@ -197,7 +197,7 @@ impl User {
                     let mut seen = HashSet::<String>::new();
 
                     for spn_raw in value {
-                        // Normalise: trim, remplace '\' par '/', insensible à la casse
+                        // Normalize: trim, replace '\' with '/', case-insensitive
                         let spn = spn_raw.trim().replace('\\', "/");
                         // SPN need to be: service/host[:port][/...]
                         let host_part = spn
@@ -218,7 +218,7 @@ impl User {
                         // Save it 
                         if seen.insert(fqdn_upper.clone()) {
                             let mut m = Member::new();
-                            *m.object_identifier_mut() = fqdn_upper; // déjà uppercase
+                            *m.object_identifier_mut() = fqdn_upper; // already uppercase
                             *m.object_type_mut() = "Computer".to_string();
                             vec_members2.push(m);
                         }

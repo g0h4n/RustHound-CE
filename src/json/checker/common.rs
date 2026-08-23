@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use once_cell::sync::Lazy;
+use rayon::prelude::*;
 use regex::Regex;
 use crate::enums::ldaptype::*;
 use crate::objects::common::Link;
@@ -274,50 +276,57 @@ pub fn add_default_users(
     Ok(())
 }
 
+/// Build a reverse index from SID to DN once, so per-object lookups are O(1)
+/// instead of an O(n) linear scan over `dn_sid`. `dn_sid` values (SIDs) are
+/// effectively unique; when a SID maps to several DNs the first one wins, which
+/// matches the previous `.find()` behaviour.
+fn build_sid_to_dn(dn_sid: &HashMap<String, String>) -> HashMap<&str, &str> {
+    let mut sid_to_dn: HashMap<&str, &str> = HashMap::with_capacity(dn_sid.len());
+    for (dn, sid) in dn_sid {
+        sid_to_dn.entry(sid.as_str()).or_insert(dn.as_str());
+    }
+    sid_to_dn
+}
+
 /// This function is to push user SID in ChildObjects v2
-pub fn add_childobjects_members<T: LdapObject>(
+pub fn add_childobjects_members<T: LdapObject + Send>(
     vec_replaced: &mut [T],
     dn_sid: &HashMap<String, String>,
     sid_type: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Needed for progress bar stats
-    let total = vec_replaced.len();
-    let pb = ProgressBar::new(total as u64);
+    // Reverse index SID -> DN, built once (was an O(n) scan per object).
+    let sid_to_dn = build_sid_to_dn(dn_sid);
 
-    // Iterate over the objects
-    for (count, object) in vec_replaced.iter_mut().enumerate() {
-        // Update progress bar periodically
-        if count % (total / 100).max(1) == 0 {
-            pb.set_position(count as u64);
-        }
+    // Uppercase every DN a single time instead of once per object. The old code
+    // re-allocated an uppercased copy of every `dn_sid` key for every object,
+    // which was the O(n^2) allocation storm behind the multi-GB RAM use.
+    let dn_upper: Vec<(String, &String)> =
+        dn_sid.iter().map(|(dn, sid)| (dn.to_uppercase(), sid)).collect();
 
+    // Objects are independent; process them across all CPU cores.
+    vec_replaced.par_iter_mut().for_each(|object| {
         // Get the SID, DN, and name of the current object
         let sid = object.get_object_identifier().to_uppercase();
-        let dn = dn_sid
-            .iter()
-            .find(|(_, v)| **v == sid)
-            .map(|(k, _)| k)
-            .unwrap_or(&sid);
+        let dn: &str = sid_to_dn.get(sid.as_str()).copied().unwrap_or(sid.as_str());
         let name = get_name_from_full_distinguishedname(dn);
-        let _otype = sid_type.get(&sid).unwrap();
 
-        // Filter direct members from dn_sid
-        let direct_members: Vec<Member> = dn_sid
+        // Filter direct members from the pre-uppercased dn list
+        let direct_members: Vec<Member> = dn_upper
             .iter()
-            .filter_map(|(dn_object, value_sid)| {
-                let dn_object_upper = dn_object.to_uppercase();
-
+            .filter_map(|(dn_object_upper, value_sid)| {
                 // Check if dn_object is related to the current object's DN
                 if dn_object_upper.contains(dn)
-                    && &dn_object_upper != dn
-                    && dn_object_upper.split(',')
+                    && dn_object_upper.as_str() != dn
+                    && dn_object_upper
+                        .split(',')
                         .nth(1)
                         .and_then(|s| s.split('=').nth(1))
-                        == Some(&name)
+                        == Some(name.as_str())
                 {
                     let mut member = Member::new();
-                    *member.object_identifier_mut() = value_sid.clone();
-                    *member.object_type_mut() = sid_type.get(value_sid).unwrap_or(&value_sid).to_string();
+                    *member.object_identifier_mut() = (*value_sid).clone();
+                    *member.object_type_mut() =
+                        sid_type.get(*value_sid).unwrap_or(value_sid).to_string();
                     if !member.object_identifier().is_empty() {
                         return Some(member);
                     }
@@ -328,9 +337,8 @@ pub fn add_childobjects_members<T: LdapObject>(
 
         // Set direct members for the object
         object.set_child_objects(direct_members);
-    }
+    });
 
-    pb.finish_and_clear();
     Ok(())
 }
 
@@ -422,21 +430,12 @@ pub fn add_childobjects_members_for_ou(
 }
 
 /// This function checks GUID for all Gplinks and replaces them with the correct GUIDs
-pub fn replace_guid_gplink<T: LdapObject>(
+pub fn replace_guid_gplink<T: LdapObject + Send>(
     vec_replaced: &mut [T],
     dn_sid: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Progress bar setup
-    let total = vec_replaced.len();
-    let pb = ProgressBar::new(total as u64);
-
-    // Iterate over the objects
-    for (count, object) in vec_replaced.iter_mut().enumerate() {
-        // Update progress bar periodically
-        if count % (total / 100).max(1) == 0 {
-            pb.set_position(count as u64);
-        }
-
+    // Objects are independent; process them across all CPU cores.
+    vec_replaced.par_iter_mut().for_each(|object| {
         // Process links if they exist
         if !object.get_links().is_empty() {
             // Replace GUIDs in links
@@ -459,9 +458,8 @@ pub fn replace_guid_gplink<T: LdapObject>(
             // Update the object's links
             object.set_links(updated_links);
         }
-    }
+    });
 
-    pb.finish_and_clear();
     Ok(())
 }
 
@@ -497,77 +495,51 @@ pub fn add_affected_computers_for_ou(
     dn_sid: &HashMap<String, String>,
     sid_type: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Filter all computers DN:SID in advance
-    let dn_sid_filtered: Vec<(&String, &String)> = dn_sid
-        .iter()
-        .filter(|(_, sid)| sid_type.get(*sid).map(|t| t == "Computer").unwrap_or(false))
-        .collect();
-
-    // Map each OU's identifier to its DN
-    let ou_dn_map: HashMap<String, String> = vec_ous
-        .iter()
-        .filter_map(|ou| {
-            dn_sid
-                .iter()
-                .find_map(|(dn, sid)| {
-                    if *sid == *ou.get_object_identifier() {
-                        Some((ou.get_object_identifier().to_owned(), dn.clone()))
-                    } else {
-                        None
-                    }
-                })
-        })
-        .collect();
-
-    // For each OU, add affected computers
-    for ou in vec_ous.iter_mut() {
-        if let Some(ou_dn) = ou_dn_map.get(ou.get_object_identifier()) {
-            let vec_affected_computers: Vec<Member> = dn_sid_filtered
-                .iter()
-                .filter_map(|(dn, sid)| {
-                    if get_contained_by_name_from_distinguishedname(
-                        &get_cn_object_name_from_full_distinguishedname(dn),
-                        dn,
-                    ) == *ou_dn
-                    {
-                        let mut member = Member::new();
-                        *member.object_identifier_mut() = sid.to_string();
-                        *member.object_type_mut() = "Computer".to_string();
-                        Some(member)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            // Update GPO changes for the OU
-            let mut gpo_changes = GPOChange::new();
-            *gpo_changes.affected_computers_mut() = vec_affected_computers;
-            *ou.gpo_changes_mut() = gpo_changes;
+    // Group every computer under its parent DN a single time, so each OU is an
+    // O(1) lookup instead of a full scan over all computers (was O(OUs*computers)).
+    let mut computers_by_parent: HashMap<String, Vec<Member>> = HashMap::new();
+    for (dn, sid) in dn_sid {
+        if sid_type.get(sid).map(|t| t == "Computer").unwrap_or(false) {
+            let parent = get_contained_by_name_from_distinguishedname(
+                &get_cn_object_name_from_full_distinguishedname(dn),
+                dn,
+            );
+            let mut member = Member::new();
+            *member.object_identifier_mut() = sid.to_string();
+            *member.object_type_mut() = "Computer".to_string();
+            computers_by_parent.entry(parent).or_default().push(member);
         }
+    }
+
+    // Map each OU's identifier to its DN, using a reverse index built once
+    // instead of scanning `dn_sid` per OU.
+    let sid_to_dn = build_sid_to_dn(dn_sid);
+
+    // For each OU, attach the pre-grouped affected computers (empty list when
+    // none, matching the previous behaviour of always setting gpo_changes).
+    for ou in vec_ous.iter_mut() {
+        let Some(ou_dn) = sid_to_dn.get(ou.get_object_identifier().as_str()) else {
+            continue;
+        };
+        let affected = computers_by_parent.get(*ou_dn).cloned().unwrap_or_default();
+        let mut gpo_changes = GPOChange::new();
+        *gpo_changes.affected_computers_mut() = affected;
+        *ou.gpo_changes_mut() = gpo_changes;
     }
     Ok(())
 }
 
 /// This function replaces FQDN by SID in users' SPNTargets or computers' AllowedToDelegate
-pub fn replace_fqdn_by_sid<T: LdapObject>(
+pub fn replace_fqdn_by_sid<T: LdapObject + Send>(
     object_type: Type,
     vec_src: &mut [T],
     fqdn_sid: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Progress bar setup
-    let total = vec_src.len();
-    let pb = ProgressBar::new(total as u64);
-
-    // Process based on the object type
+    // Objects are independent and `fqdn_sid` is read-only, so process across all
+    // CPU cores.
     match object_type {
         Type::User => {
-            for (count, obj) in vec_src.iter_mut().enumerate() {
-                // Update progress bar
-                if count % (total / 100).max(1) == 0 {
-                    pb.set_position(count as u64);
-                }
-
+            vec_src.par_iter_mut().for_each(|obj| {
                 // Process SPNTargets
                 for target in obj.get_spntargets_mut().iter_mut() {
                     let sid = fqdn_sid
@@ -583,15 +555,10 @@ pub fn replace_fqdn_by_sid<T: LdapObject>(
                         .unwrap_or_else(|| target.object_identifier());
                     *target.object_identifier_mut() = sid.to_string();
                 }
-            }
+            });
         }
         Type::Computer => {
-            for (count, obj) in vec_src.iter_mut().enumerate() {
-                // Update progress bar
-                if count % (total / 100).max(1) == 0 {
-                    pb.set_position(count as u64);
-                }
-
+            vec_src.par_iter_mut().for_each(|obj| {
                 // Process AllowedToDelegate
                 for delegate in obj.get_allowed_to_delegate_mut().iter_mut() {
                     let sid = fqdn_sid
@@ -599,12 +566,11 @@ pub fn replace_fqdn_by_sid<T: LdapObject>(
                         .unwrap_or_else(|| delegate.object_identifier());
                     *delegate.object_identifier_mut() = sid.to_string();
                 }
-            }
+            });
         }
         _ => {}
     }
 
-    pb.finish_and_clear();
     Ok(())
 }
 
@@ -615,16 +581,11 @@ pub fn replace_sid_members(
     sid_type: &HashMap<String, String>,
     vec_trusts: &[Trust],
 ) -> Result<(), Box<dyn Error>> {
-    let total = vec_groups.len();
-    let pb = ProgressBar::new(total as u64);
-
     let default_type = "Group".to_string();
 
-    for (count, group) in vec_groups.iter_mut().enumerate() {
-        if count % (total / 100).max(1) == 0 {
-            pb.set_position(count as u64);
-        }
-
+    // Groups are independent and the maps/trusts are read-only, so resolve
+    // members across all CPU cores.
+    vec_groups.par_iter_mut().for_each(|group| {
         for member in group.members_mut() {
             let member_dn = member.object_identifier();
 
@@ -646,17 +607,21 @@ pub fn replace_sid_members(
             }
 
             // 3) Fallback: try trusts
-            let generated_sid = sid_maker_from_another_domain(vec_trusts, member_dn)?;
-            if !generated_sid.is_empty() {
-                *member.object_identifier_mut() = generated_sid;
-                *member.object_type_mut() = default_type.clone();
-            } else {
-                error!("Could not resolve SID for member DN: {}", member_dn);
+            match sid_maker_from_another_domain(vec_trusts, member_dn) {
+                Ok(generated_sid) if !generated_sid.is_empty() => {
+                    *member.object_identifier_mut() = generated_sid;
+                    *member.object_type_mut() = default_type.clone();
+                }
+                Ok(_) => {
+                    error!("Could not resolve SID for member DN: {}", member_dn);
+                }
+                Err(e) => {
+                    error!("Failed to resolve member DN {}: {}", member_dn, e);
+                }
             }
         }
-    }
+    });
 
-    pb.finish_and_clear();
     Ok(())
 }
 
@@ -665,8 +630,10 @@ fn sid_maker_from_another_domain(
     vec_trusts: &[Trust],
     object_identifier: &String,
 ) -> Result<String, Box<dyn Error>> {
-    // Create the regex for SID matching
-    let sid_regex = Regex::new(r"S-[0-9]+-[0-9]+-[0-9]+(?:-[0-9]+)+")?;
+    // Regex for SID matching, compiled once instead of on every call.
+    static SID_REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"S-[0-9]+-[0-9]+-[0-9]+(?:-[0-9]+)+").unwrap());
+    let sid_regex = &*SID_REGEX;
 
     // Check if the object_identifier matches any trusted domain
     for trust in vec_trusts {
@@ -694,22 +661,38 @@ fn get_id_from_objectidentifier(
     object_identifier: &str
 ) -> Result<String, Box<dyn Error>> {
 
-    // Static mapping of group names to RIDs
+    // Static mapping of built-in group names to their well-known RIDs.
+    //
+    // NOTE: the French-language entries are intentional and REQUIRED, not
+    // untranslated text. On a French-locale Domain Controller the built-in
+    // groups are returned by LDAP under their localized names (e.g. "Domain
+    // Admins" is literally "Administrateurs du domaine"), so each RID is
+    // matched from both its English and French display name. Removing the
+    // French names would break well-known-SID resolution on French domains.
+    // Additional locales can be added here following the same pattern.
     const NAME_TO_RID: [(&str, &str); 16] = [
+        // -512  Domain Admins
         ("DOMAIN ADMINS", "-512"),
         ("ADMINISTRATEURS DU DOMAINE", "-512"),
+        // -513  Domain Users
         ("DOMAIN USERS", "-513"),
         ("UTILISATEURS DU DOMAINE", "-513"),
+        // -514  Domain Guests
         ("DOMAIN GUESTS", "-514"),
         ("INVITES DE DOMAINE", "-514"),
+        // -515  Domain Computers
         ("DOMAIN COMPUTERS", "-515"),
         ("ORDINATEURS DE DOMAINE", "-515"),
+        // -516  Domain Controllers
         ("DOMAIN CONTROLLERS", "-516"),
         ("CONTRÔLEURS DE DOMAINE", "-516"),
+        // -517  Cert Publishers
         ("CERT PUBLISHERS", "-517"),
         ("EDITEURS DE CERTIFICATS", "-517"),
+        // -518  Schema Admins
         ("SCHEMA ADMINS", "-518"),
         ("ADMINISTRATEURS DU SCHEMA", "-518"),
+        // -519  Enterprise Admins
         ("ENTERPRISE ADMINS", "-519"),
         ("ADMINISTRATEURS DE L'ENTREPRISE", "-519"),
     ];
@@ -748,25 +731,16 @@ pub fn add_trustdomain(
 }
 
 /// This function checks PrincipalSID for all ACEs and adds the PrincipalType ("Group", "User", "Computer") v2
-pub fn add_type_for_ace<T: LdapObject>(
+pub fn add_type_for_ace<T: LdapObject + Send>(
     object: &mut [T],
     sid_type: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Progress bar setup
-    let total = object.len();
-    let pb = ProgressBar::new(total as u64);
-
     // Default type for unmatched SIDs
     let default_type = "Group".to_string();
 
-    // Iterate over each object
-    for (count, obj) in object.iter_mut().enumerate() {
-        // Update progress bar
-        if count % (total / 100).max(1) == 0 {
-            pb.set_position(count as u64);
-        }
-
-        // Get mutable reference to ACEs
+    // Each object's ACEs are independent and `sid_type` is read-only here, so
+    // this is embarrassingly parallel: spread it across all CPU cores.
+    object.par_iter_mut().for_each(|obj| {
         for ace in obj.get_aces_mut() {
             // Fetch the type from sid_type or use the default
             let type_object = sid_type
@@ -777,9 +751,8 @@ pub fn add_type_for_ace<T: LdapObject>(
             // Update the principal type
             *ace.principal_type_mut() = type_object;
         }
-    }
+    });
 
-    pb.finish_and_clear();
     Ok(())
 }
 
@@ -788,20 +761,11 @@ pub fn add_type_for_allowtedtoact(
     computer: &mut [Computer],
     sid_type: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Progress bar setup
-    let total = computer.len();
-    let pb = ProgressBar::new(total as u64);
-
     // Default type for unmatched SIDs
     let default_type = "Computer".to_string();
 
-    // Iterate over all computers
-    for (count, comp) in computer.iter_mut().enumerate() {
-        // Update progress bar periodically
-        if count % (total / 100).max(1) == 0 {
-            pb.set_position(count as u64);
-        }
-
+    // Computers are independent; process them across all CPU cores.
+    computer.par_iter_mut().for_each(|comp| {
         // Process all AllowedToAct objects
         for allowed in comp.allowed_to_act_mut() {
             let type_object = sid_type
@@ -811,58 +775,54 @@ pub fn add_type_for_allowtedtoact(
 
             *allowed.object_type_mut() = type_object;
         }
-    }
+    });
 
-    pb.finish_and_clear();
     Ok(())
 }
 
 /// This function pushes user SID into ChildObjects for Ou v2
-pub fn add_contained_by_for<T: LdapObject>(
+pub fn add_contained_by_for<T: LdapObject + Send>(
     vec_replaced: &mut [T],
-    dn_sid: &HashMap<String, String>, 
+    dn_sid: &HashMap<String, String>,
     sid_type: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Progress bar setup
-    let total = vec_replaced.len();
-    let pb = ProgressBar::new(total as u64);
-
     // Default type for unmatched SIDs
     let default_type = "Group".to_string();
 
-    for (count, object) in vec_replaced.iter_mut().enumerate() {
-        // Update progress bar periodically
-        if count % (total / 100).max(1) == 0 {
-            pb.set_position(count as u64);
-        }
+    // Reverse index SID -> DN, built once. This used to be an O(n) linear scan
+    // over `dn_sid` *per object* (`dn_sid.iter().find_map(...)`), i.e. O(n^2)
+    // over the whole dataset — the dominant hang on large domains.
+    let sid_to_dn = build_sid_to_dn(dn_sid);
 
+    // Each object is independent and the maps are read-only here, so fan the
+    // work out across all CPU cores.
+    vec_replaced.par_iter_mut().for_each(|object| {
         // Fetch SID and DN for the current object
         let sid = object.get_object_identifier();
-        let dn = dn_sid.iter().find_map(|(key, value)| if value == sid { Some(key) } else { None });
+        let Some(dn) = sid_to_dn.get(sid.as_str()).copied() else {
+            return;
+        };
 
-        if let Some(dn) = dn {
-            let otype = sid_type.get(sid).unwrap_or(&default_type);
+        let otype = sid_type.get(sid).unwrap_or(&default_type);
+        if otype != "Domain" {
+            // Extract CN name and contained-by name
+            let dn_owned = dn.to_string();
+            let cn_name = get_cn_object_name_from_full_distinguishedname(&dn_owned);
+            let contained_by_name = get_contained_by_name_from_distinguishedname(&cn_name, &dn_owned);
 
-            if otype != "Domain" {
-                // Extract CN name and contained-by name
-                let cn_name = get_cn_object_name_from_full_distinguishedname(dn);
-                let contained_by_name = get_contained_by_name_from_distinguishedname(&cn_name, dn);
+            // Check if the contained-by name exists in dn_sid
+            if let Some(sid_contained_by) = dn_sid.get(&contained_by_name) {
+                let type_contained_by = sid_type.get(sid_contained_by).unwrap_or(&default_type);
 
-                // Check if the contained-by name exists in dn_sid
-                if let Some(sid_contained_by) = dn_sid.get(&contained_by_name) {
-                    let type_contained_by = sid_type.get(sid_contained_by).unwrap_or(&default_type);
-
-                    // Create and set the contained_by Member
-                    let mut contained_by = Member::new();
-                    *contained_by.object_identifier_mut() = sid_contained_by.to_string();
-                    *contained_by.object_type_mut() = type_contained_by.to_string();
-                    object.set_contained_by(Some(contained_by));
-                }
+                // Create and set the contained_by Member
+                let mut contained_by = Member::new();
+                *contained_by.object_identifier_mut() = sid_contained_by.to_string();
+                *contained_by.object_type_mut() = type_contained_by.to_string();
+                object.set_contained_by(Some(contained_by));
             }
         }
-    }
+    });
 
-    pb.finish_and_clear();
     Ok(())
 }
 

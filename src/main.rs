@@ -1,6 +1,14 @@
 pub mod banner;
 pub mod modules;
 
+// Scalable multithreaded allocator. The default OS allocator (the Windows
+// process heap in particular) serializes concurrent allocations behind a lock,
+// which throttled every parallel phase — decode, parse, and the checker all
+// allocate heavily, so threads spent their time contending instead of working.
+// mimalloc uses per-thread heaps and removes that bottleneck.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use env_logger::Builder;
 use log::{error, info, trace};
 
@@ -54,7 +62,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .join(CACHE_FILE);
             info!("Resuming from cache: {}", format!("{}",ldap_cache_path.display()).bold());
             let cache = DiskStorageReader::from_path(ldap_cache_path)?;
-            rusthound_ce::prepare_results_from_source(cache, &common_args, None).await?
+            rusthound_ce::prepare_results_from_disk(cache, &common_args, None).await?
         }
         false => {
             if common_args.cache {
@@ -89,7 +97,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 )
                 .await?;
 
-                rusthound_ce::prepare_results_from_source(
+                rusthound_ce::prepare_results_from_disk(
                     cache_writer.into_reader()?,
                     &common_args,
                     Some(total_cached),
