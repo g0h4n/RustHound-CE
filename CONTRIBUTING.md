@@ -4,7 +4,7 @@ Thanks for taking the time to improve RustHound-CE. Small, focused pull requests
 
 ## Before you start
 
-Check the [roadmap](ROADMAP.md), existing pull requests, and recent commits before choosing a task. If the change is large, affects several object types, or changes the output contract, open an issue or discussion first.
+Check the [roadmap](ROADMAP.md), existing pull requests, and recent commits before choosing a task. You can also browse the issues containing `[Feature Request]` to see actions requested by the community in addition to the roadmap items. If the change is large, affects several object types, or changes the output contract, open an issue or discussion first.
 
 Please do not include credentials, domain data, collection output, private certificates, or other sensitive information in commits, tests, screenshots, or pull requests.
 

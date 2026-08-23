@@ -68,7 +68,7 @@
         - [x] `Properties`:`lockoutduration` :white_check_mark:
         - [x] `Properties`:`lockoutobservationwindow` :white_check_mark:
         - [x] `Properties`:`functionallevel` :white_check_mark:
-        - [ ] `Properties`:`dsheuristics` :red_circle:
+        - [x] `Properties`:`dsheuristics` :white_check_mark:
         - [x] `Properties`:`collected` :white_check_mark:
         - [ ] `GPOChanges`:`LocalAdmins` :red_circle: need RPC call [src GPOLocalGroupProcessor.cs](https://github.com/BloodHoundAD/SharpHoundCommon/blob/v3/src/CommonLib/Processors/GPOLocalGroupProcessor.cs)
         - [ ] `GPOChanges`:`RemoteDesktopUsers` :red_circle: need RPC call
@@ -116,7 +116,7 @@
         - [x] `PrimaryGroupSID` :white_check_mark:
         - [x] `AllowedToDelegate` :white_check_mark:
         - [x] `AllowedToAct` :white_check_mark:
-        - [ ] `HasSIDHistory` :red_circle:
+        - [x] `HasSIDHistory` :white_check_mark:
         - [ ] `DumpSMSAPassword` :red_circle:
         - [ ] `Sessions` :red_circle: need RPC call
         - [ ] `PrivilegedSessions` :red_circle: need RPC call
@@ -176,7 +176,7 @@
         - [ ] `Properties`:`sidhistory` :red_circle:
         - [x] `PrimaryGroupSID` :white_check_mark:
         - [x] `AllowedToDelegate` :white_check_mark:
-        - [ ] `HasSIDHistory` :red_circle:
+        - [x] `HasSIDHistory` :white_check_mark:
         - [x] `SPNTargets` :white_check_mark:
         - [x] `DomainSID` :white_check_mark:
         - [x] `Aces` :white_check_mark:
