@@ -104,3 +104,62 @@ pub fn decode_guid_le(raw_guid: &[u8]) -> String {
 
     str_guid
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::enums::secdesc::{LdapSid, LdapSidIdentifiedAuthority};
+
+    fn make_sid(sub_authority: Vec<u32>) -> LdapSid {
+        LdapSid {
+            revision: 1,
+            sub_authority_count: sub_authority.len() as u8,
+            identifier_authority: LdapSidIdentifiedAuthority {
+                value: vec![0, 0, 0, 0, 0, 5],
+            },
+            sub_authority,
+        }
+    }
+
+    #[test]
+    fn sid_maker_keeps_long_sid_without_domain_prefix() {
+        let sid = make_sid(vec![21, 123456789, 1234567890, 500]);
+
+        assert_eq!(
+            sid_maker(sid, "domain.local"),
+            "S-1-5-21-123456789-1234567890-500"
+        );
+    }
+
+    #[test]
+    fn sid_maker_prefixes_short_sid_with_domain() {
+        let sid = make_sid(vec![500]);
+
+        assert_eq!(sid_maker(sid, "domain.local"), "DOMAIN.LOCAL-S-1-5-500");
+    }
+
+    #[test]
+    fn decode_guid_le_converts_little_endian_fields() {
+        let raw = [
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF,
+        ];
+
+        assert_eq!(
+            decode_guid_le(&raw),
+            "33221100-5544-7766-8899-AABBCCDDEEFF"
+        );
+    }
+
+    #[test]
+    fn is_sid_accepts_valid_sid_and_rejects_invalid_input() {
+        assert!(is_sid("S-1-5-21-123456789-500").unwrap());
+        assert!(!is_sid("S-1-4-21-123456789").unwrap());
+        assert!(!is_sid("not-a-sid").unwrap());
+    }
+
+    #[test]
+    fn hex_push_returns_uppercase_hex_without_padding() {
+        assert_eq!(hex_push(&[0x0F, 0xA0]), "FA0");
+    }
+}
