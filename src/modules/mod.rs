@@ -1,4 +1,5 @@
 //! List of RustHound add-on modules
+pub mod gpo;
 pub mod resolver;
 
 use std::collections::HashMap;
