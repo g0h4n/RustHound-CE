@@ -1,4 +1,7 @@
-use crate::modules::gpo::types::{GpoError, GptTmplPolicy, PrivilegeAssignment};
+use crate::modules::gpo::types::{
+    GpoError, GptTmplPolicy, PrivilegeAssignment, RestrictedGroupDirective,
+    RestrictedGroupOperation,
+};
 
 /// Decodes raw bytes of a GptTmpl.inf security template into a UTF-8 `String`.
 ///
@@ -97,7 +100,8 @@ fn decode_utf16be(bytes: &[u8]) -> Result<String, GpoError> {
 }
 
 /// Parses a decoded `GptTmpl.inf` content string into a structured `GptTmplPolicy`.
-/// Returns `Err(GpoError::MalformedContent)` if any syntax error occurs within `[Privilege Rights]`.
+/// Returns `Err(GpoError::MalformedContent)` for malformed assignments in
+/// `[Privilege Rights]` or `[Group Membership]`.
 ///
 /// # Comments and Syntax
 /// Per Microsoft Windows INF specifications and MS-GPSB section 2.2.6:
@@ -107,6 +111,7 @@ fn decode_utf16be(bytes: &[u8]) -> Result<String, GpoError> {
 pub fn parse_gpttmpl(content: &str) -> Result<GptTmplPolicy, GpoError> {
     let mut current_section: Option<String> = None;
     let mut privilege_rights: Vec<PrivilegeAssignment> = Vec::new();
+    let mut restricted_groups: Vec<RestrictedGroupDirective> = Vec::new();
 
     for (line_idx, line) in content.lines().enumerate() {
         let line_no = line_idx + 1;
@@ -170,11 +175,52 @@ pub fn parse_gpttmpl(content: &str) -> Result<GptTmplPolicy, GpoError> {
                     privilege_rights
                         .push(PrivilegeAssignment::new(privilege.to_string(), principals));
                 }
+            } else if section == "group membership" {
+                let (raw_key, raw_val) = trimmed.split_once('=').ok_or_else(|| {
+                    GpoError::MalformedContent(format!(
+                        "invalid group membership entry at line {line_no}: missing '='"
+                    ))
+                })?;
+                let key = raw_key.trim();
+                let key_lower = key.to_ascii_lowercase();
+                let (target, operation) = if key_lower.ends_with("__members") {
+                    (
+                        &key[..key.len() - "__Members".len()],
+                        RestrictedGroupOperation::ReplaceMembers,
+                    )
+                } else if key_lower.ends_with("__memberof") {
+                    (
+                        &key[..key.len() - "__Memberof".len()],
+                        RestrictedGroupOperation::AddToParentGroups,
+                    )
+                } else {
+                    return Err(GpoError::MalformedContent(format!(
+                        "invalid group membership entry at line {line_no}: expected __Members or __Memberof suffix"
+                    )));
+                };
+                let target = target.trim();
+                if target.is_empty() {
+                    return Err(GpoError::MalformedContent(format!(
+                        "invalid group membership entry at line {line_no}: empty target group"
+                    )));
+                }
+                let val_clean = raw_val.split(';').next().unwrap_or_default();
+                let principals = val_clean
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                restricted_groups
+                    .push(RestrictedGroupDirective::new(target, operation, principals));
             }
         }
     }
 
-    Ok(GptTmplPolicy::with_privilege_rights(privilege_rights))
+    Ok(GptTmplPolicy::with_entries(
+        privilege_rights,
+        restricted_groups,
+    ))
 }
 
 /// Parses raw bytes of a `GptTmpl.inf` security template directly into a `GptTmplPolicy`.
@@ -282,6 +328,103 @@ SeRemoteInteractiveLogonRight = *S-1-5-32-555
             }
             other => panic!("Unexpected error type: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_restricted_groups_without_applying_graph_semantics() {
+        let content = r#"
+[Group Membership]
+*S-1-5-32-544__Members = *S-1-5-21-1-2-3-1001,DOMAIN\Helpdesk
+DOMAIN\Helpdesk__Memberof = *S-1-5-32-555
+*S-1-5-32-546__Members =
+"#;
+        let policy = parse_gpttmpl(content).unwrap();
+        let directives = policy.restricted_groups();
+        assert_eq!(directives.len(), 3);
+        assert_eq!(directives[0].target(), "*S-1-5-32-544");
+        assert_eq!(
+            directives[0].operation(),
+            RestrictedGroupOperation::ReplaceMembers
+        );
+        assert_eq!(
+            directives[0].principals(),
+            &["*S-1-5-21-1-2-3-1001", "DOMAIN\\Helpdesk"]
+        );
+        assert_eq!(
+            directives[1].operation(),
+            RestrictedGroupOperation::AddToParentGroups
+        );
+        assert!(directives[2].principals().is_empty());
+    }
+
+    #[test]
+    fn rejects_unknown_restricted_group_suffixes() {
+        let content = "[Group Membership]\nAdministrators__Unknown = DOMAIN\\alice\n";
+        assert!(matches!(
+            parse_gpttmpl(content),
+            Err(GpoError::MalformedContent(_))
+        ));
+    }
+
+    #[test]
+    fn restricted_groups_preserve_comments_crlf_names_and_empty_values() {
+        let content = "; synthetic fixture\r\n[Group Membership]\r\n  Local Operators__Members = DOMAIN\\alice, svc#backup ; comment\r\nLocal Operators__Memberof = *S-1-5-32-544, *S-1-5-32-555\r\nEmpty Group__Memberof = ; empty membership\r\n";
+        let policy = parse_gpttmpl(content).unwrap();
+        let groups = policy.restricted_groups();
+        assert_eq!(groups.len(), 3);
+        assert_eq!(groups[0].target(), "Local Operators");
+        assert_eq!(
+            groups[0].operation(),
+            RestrictedGroupOperation::ReplaceMembers
+        );
+        assert_eq!(groups[0].principals(), &["DOMAIN\\alice", "svc#backup"]);
+        assert_eq!(groups[1].target(), "Local Operators");
+        assert_eq!(
+            groups[1].operation(),
+            RestrictedGroupOperation::AddToParentGroups
+        );
+        assert_eq!(groups[1].principals(), &["*S-1-5-32-544", "*S-1-5-32-555"]);
+        assert!(groups[2].principals().is_empty());
+    }
+
+    #[test]
+    fn restricted_groups_reject_missing_equals_and_empty_targets() {
+        for entry in [
+            "Administrators__Members : DOMAIN\\alice",
+            "__Members = DOMAIN\\alice",
+            "__Memberof = *S-1-5-32-544",
+        ] {
+            assert!(matches!(
+                parse_gpttmpl(&format!("[Group Membership]\n{entry}\n")),
+                Err(GpoError::MalformedContent(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn restricted_groups_decode_canonical_utf16le() {
+        let text = "[Group Membership]\r\n*S-1-5-32-544__Members = DOMAIN\\alice, *S-1-5-21-1-2-3-1001\r\nLocal Operators__Memberof = *S-1-5-32-555\r\n";
+        let mut bytes = vec![0xFF, 0xFE];
+        for unit in text.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        let policy = parse_gpttmpl_bytes(&bytes).unwrap();
+        let groups = policy.restricted_groups();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].target(), "*S-1-5-32-544");
+        assert_eq!(
+            groups[0].operation(),
+            RestrictedGroupOperation::ReplaceMembers
+        );
+        assert_eq!(
+            groups[0].principals(),
+            &["DOMAIN\\alice", "*S-1-5-21-1-2-3-1001"]
+        );
+        assert_eq!(
+            groups[1].operation(),
+            RestrictedGroupOperation::AddToParentGroups
+        );
+        assert_eq!(groups[1].principals(), &["*S-1-5-32-555"]);
     }
 
     #[test]
