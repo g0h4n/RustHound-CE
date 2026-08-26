@@ -34,10 +34,20 @@ pub struct Options {
     pub resume: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CollectionMethod {
-    All,
-    DCOnly,
+    All,            // LDAP + sessions (all three RPC paths)
+    DCOnly,         // LDAP only, never contacts a machine
+    Session,        // LDAP + SRVSVC + WKSSVC + WINREG
+    RegistryOnly,   // LDAP + WINREG
+}
+
+impl CollectionMethod {
+    // DCOnly is the only method that skips the sessions module entirely.
+    pub fn does_sessions(&self) -> bool { !matches!(self, Self::DCOnly) }
+    pub fn srvsvc(&self)   -> bool { matches!(self, Self::All | Self::Session) }
+    pub fn wkssvc(&self)   -> bool { matches!(self, Self::All | Self::Session) }
+    pub fn registry(&self) -> bool { matches!(self, Self::All | Self::Session | Self::RegistryOnly) }
 }
 
 // Current RustHound version
@@ -123,10 +133,10 @@ fn cli() -> Command {
     .arg(Arg::new("collectionmethod")
         .short('c')
         .long("collectionmethod")
-        .help("Which information to collect. Supported: All (LDAP,SMB,HTTP requests), DCOnly (no computer connections, only LDAP requests). (default: All)")
+        .help("Which information to collect. Supported: All (LDAP,SMB,HTTP requests), DCOnly (no computer connections, only LDAP requests), Session (does user session collection), RegistryOnly (does user session collection over registry) (default: All)")
         .required(false)
         .value_name("COLLECTIONMETHOD")
-        .value_parser(["All", "DCOnly"])
+        .value_parser(["All", "DCOnly", "Session", "RegistryOnly"])
         .num_args(0..=1)
         .default_missing_value("All")
     )
@@ -259,10 +269,16 @@ pub fn extract_args() -> Options {
         1 => log::LevelFilter::Debug,
         _ => log::LevelFilter::Trace,
     };
-    let collection_method = match matches.get_one::<String>("collectionmethod").map(|s| s.as_str()).unwrap_or("All") {
-        "All"       => CollectionMethod::All,
-        "DCOnly"    => CollectionMethod::DCOnly,
-         _          => CollectionMethod::All,
+    let collection_method = match matches
+        .get_one::<String>("collectionmethod")
+        .map(|s| s.as_str())
+        .unwrap_or("All")
+    {
+        "All"           => CollectionMethod::All,
+        "DCOnly"        => CollectionMethod::DCOnly,
+        "Session"       => CollectionMethod::Session,
+        "RegistryOnly"  => CollectionMethod::RegistryOnly,
+        _               => CollectionMethod::All,
     };
     let ldap_filter = matches.get_one::<String>("ldap-filter").map(|s| s.as_str()).unwrap_or("(objectClass=*)");
 

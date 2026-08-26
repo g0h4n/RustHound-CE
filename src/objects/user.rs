@@ -61,6 +61,9 @@ impl User {
     pub fn aces(&self) -> &Vec<AceTemplate> {
         &self.aces
     }
+    pub fn object_identifier(&self) -> &String {
+        &self.object_identifier
+    }
 
     // Mutable access.
     pub fn properties_mut(&mut self) -> &mut UserProperties {

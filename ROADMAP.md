@@ -118,9 +118,9 @@
         - [x] `AllowedToAct` :white_check_mark:
         - [x] `HasSIDHistory` :white_check_mark:
         - [ ] `DumpSMSAPassword` :red_circle:
-        - [ ] `Sessions` :red_circle: need RPC call
-        - [ ] `PrivilegedSessions` :red_circle: need RPC call
-        - [ ] `RegistrySessions` :red_circle: need RPC call
+        - [x] `Sessions` :white_check_mark:
+        - [x] `PrivilegedSessions` :white_check_mark:
+        - [x] `RegistrySessions` :white_check_mark:
         - [ ] `LocalGroups` :red_circle:
         - [ ] `UserRights` :red_circle: need [LSAOpenPolicy](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/Security/Authentication/Identity/fn.LsaOpenPolicy.html)
         - [ ] `DCRegistryData` :red_circle: need RPC call and [GetRegistryKeyData src Helper.cs](https://github.com/BloodHoundAD/SharpHoundCommon/blob/v3/src/CommonLib/Helpers.cs#L278)

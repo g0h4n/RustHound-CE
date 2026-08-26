@@ -1,18 +1,21 @@
 //! List of RustHound add-on modules
 pub mod gpo;
 pub mod resolver;
+pub mod sessions;
 
 use std::collections::HashMap;
 use std::error::Error;
 
 use crate::args::Options;
 use crate::objects::computer::Computer;
+use crate::objects::user::User;
 
 /// Function to run all modules requested
 pub async fn run_modules(
    common_args:   &Options, 
    fqdn_ip:       &mut HashMap<String, String>, 
    vec_computers: &mut Vec<Computer>,
+   vec_users:     &mut Vec<User>,
 ) -> Result<(), Box<dyn Error>> {
    // [MODULE - RESOLVER] Running module to resolve FQDN to IP address?
    if common_args.fqdn_resolver {
@@ -23,6 +26,17 @@ pub async fn run_modules(
          &vec_computers
       ).await;
    }
+
+   // [MODULE - SESSIONS] Just does user session collection 
+   // <https://github.com/g0h4n/HasSession-rs>
+   //
+   // - SRVSVC / NetrSessionEnum - inbound SMB sessions (client IP + username).
+   // - WKSSVC / NetrWkstaUserEnum - users with an active logon context on the machine.
+   // - WINREG / HKEY_USERS - SIDs of loaded profile hives (= logged-on users).
+   if common_args.collection_method.does_sessions() {
+      sessions::run(common_args, vec_users, vec_computers).await?;
+   }
+
    // Other modules need to be add here...
    Ok(())
 }
