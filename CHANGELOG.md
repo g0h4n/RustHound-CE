@@ -6,7 +6,7 @@ Implements the session-collection feature requested in [#46](https://github.com/
 
 - **SRVSVC** / `NetrSessionEnum` (opnum 12, level 10) -> `Sessions` (any authenticated user pre-2021; local admin after the `SrvsvcSessionInfo` hardening, else rc=5)
 - **WKSSVC** / `NetrWkstaUserEnum` (opnum 2, level 1) -> `PrivilegedSessions` (local admin required)
-- **WINREG** / `HKEY_USERS` (`OpenHKU` + `BaseRegEnumKey`) -> `RegistrySessions` (local admin required, Remote Registry service running)
+- **WINREG** / `HKEY_USERS` (`OpenHKU` + `BaseRegEnumKey`) -> `RegistrySessions` (Remote Registry service running and the caller permitted by the `winreg` service ACL; local admin on hardened defaults, but not intrinsically required since `HKU` grants Read to Everyone)
 
 The `--collectionmethod` flag is extended with `Session` (all three RPC paths) and `RegistryOnly` (WINREG only); `DCOnly` skips the module entirely. The collector follows SharpHound conventions: a 445 reachability pre-check with a hard timeout, an active-host filter based on `pwdLastSet` age and the `enabled` flag, bounded concurrency with a per-host budget, and principal names resolved to SIDs from the already-collected LDAP data (unresolved principals are logged rather than dropped).
 
