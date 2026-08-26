@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.5 - 2026-08-26
+
+Implements the session-collection feature requested in [#46](https://github.com/g0h4n/RustHound-CE/issues/46). A new `src/modules/sessions/mod.rs` module runs after the LDAP phase and enumerates active sessions over three native RPC paths, correlating them into the BloodHound CE computer schema:
+
+- **SRVSVC** / `NetrSessionEnum` (opnum 12, level 10) -> `Sessions` (any authenticated user pre-2021; local admin after the `SrvsvcSessionInfo` hardening, else rc=5)
+- **WKSSVC** / `NetrWkstaUserEnum` (opnum 2, level 1) -> `PrivilegedSessions` (local admin required)
+- **WINREG** / `HKEY_USERS` (`OpenHKU` + `BaseRegEnumKey`) -> `RegistrySessions` (local admin required, Remote Registry service running)
+
+The `--collectionmethod` flag is extended with `Session` (all three RPC paths) and `RegistryOnly` (WINREG only); `DCOnly` skips the module entirely. The collector follows SharpHound conventions: a 445 reachability pre-check with a hard timeout, an active-host filter based on `pwdLastSet` age and the `enabled` flag, bounded concurrency with a per-host budget, and principal names resolved to SIDs from the already-collected LDAP data (unresolved principals are logged rather than dropped).
+
 ## 2.5.4 - 2026-08-23
 
 Pull Requests [#43](https://github.com/g0h4n/RustHound-CE/pull/43) and [#44](https://github.com/g0h4n/RustHound-CE/pull/44) make RustHound-CE scale on large domains: parallel parsing, checker and output with rayon, streamed ZIP64 JSON writing that fixes the crash on very large domains (800k+ objects), a mimalloc allocator, and deterministic resolution of computer names, ContainedBy and ADCS certificate templates so identical input produces identical output. Thanks to [@luckystars0612](https://github.com/luckystars0612) for these clean and useful contributions!
