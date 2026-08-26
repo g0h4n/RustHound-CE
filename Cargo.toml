@@ -44,7 +44,7 @@ mimalloc = "0.1"
 futures     = "0.3" 
 anyhow      = "1"
 smb2-client = "0.2"
-dcerpc      = { path = "../../dcerpc", version = "0.2.6" } # to replace with the official crate when the PR https://github.com/icedracon/dcerpc/pull/2 will be accepted
+dcerpc      = "0.2.7"
 
 [features]
 noargs = ["winreg"] # Only available for Windows

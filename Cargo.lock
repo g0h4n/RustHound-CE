@@ -704,7 +704,9 @@ dependencies = [
 
 [[package]]
 name = "dcerpc"
-version = "0.2.6"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "401ebd1077148ce70714129a1315d0d21fa8a37ec138f9e69079c641a677e2fa"
 dependencies = [
  "aes",
  "des",
@@ -1651,7 +1653,9 @@ dependencies = [
 
 [[package]]
 name = "ms-ndr"
-version = "0.1.0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4b39bbc72af3a4ab742a7ce215365b4b63dd8e56b3e0e7d75ae07f74384324b"
 dependencies = [
  "thiserror 2.0.20",
 ]
