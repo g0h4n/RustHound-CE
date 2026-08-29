@@ -58,7 +58,6 @@ jobs:
           sudo apt-get -y install \
             pkg-config \
             libssl-dev \
-            libcurl4-openssl-dev \
             libkrb5-dev \
             libsasl2-modules-gssapi-mit
 
@@ -99,9 +98,7 @@ jobs:
           brew update
           brew install \
             llvm \
-            heimdal \
-            curl \
-            pkg-config
+            heimdal
 
       - name: Install Rust targets (macOS)
         if: runner.os == 'macOS'
@@ -114,26 +111,19 @@ jobs:
         run: |
           echo "C_INCLUDE_PATH=$(brew --prefix heimdal)/include" >> $GITHUB_ENV
           echo "LIBRARY_PATH=$(brew --prefix heimdal)/lib" >> $GITHUB_ENV
-          # curl via brew (Secure Transport, pas OpenSSL) pour les deux cibles
-          CURL_PKG="$(brew --prefix curl)/lib/pkgconfig"
-          echo "PKG_CONFIG_PATH=${CURL_PKG}" >> $GITHUB_ENV
-          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          echo "CARGO_TARGET_X86_64_APPLE_DARWIN_PKG_CONFIG_PATH=${CURL_PKG}" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_APPLE_DARWIN_PKG_CONFIG_PATH=${CURL_PKG}" >> $GITHUB_ENV
 
 
       #######################################################################
       # BUILD
       #######################################################################
-      - name: Create Cross.toml for vendored OpenSSL
+      - name: Create Cross.toml for cross-compilation
         if: runner.os == 'Linux'
         run: |
           cat <<EOF > Cross.toml
-          # For Debian-based gnu targets
           [target.aarch64-unknown-linux-gnu]
-          pre-build = ["dpkg --add-architecture arm64 && apt-get update && apt-get install -y libssl-dev:arm64 libcurl4-openssl-dev:arm64"]
+          pre-build = ["dpkg --add-architecture arm64 && apt-get update && apt-get install -y libssl-dev:arm64"]
           [target.armv7-unknown-linux-gnueabihf]
-          pre-build = ["dpkg --add-architecture armhf && apt-get update && apt-get install -y libssl-dev:armhf libcurl4-openssl-dev:armhf"]
+          pre-build = ["dpkg --add-architecture armhf && apt-get update && apt-get install -y libssl-dev:armhf"]
           EOF
 
       - name: Build binary

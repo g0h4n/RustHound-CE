@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.7 - 2026-08-29
+
+Fix macOS cross-compilation failure introduced in v2.5.6.
+
+The `curl` dependency pulled `openssl-sys` which could not find an OpenSSL installation during cross-compilation (`aarch64 => x86_64`) on macOS GitHub Actions runners. Replaced `curl` with `reqwest 0.12` (blocking, `rustls-tls` backend) for the ESC8 web enrollment probe. `reqwest` with rustls is pure Rust and requires no system TLS library, consistent with the rest of the project (`ldap3/tls-rustls-ring`). No behavior change.
+
 ## 2.5.6 - 2026-08-29
 
 Issue [#48](https://github.com/g0h4n/RustHound-CE/issues/48), add active ESC8 web enrollment detection.

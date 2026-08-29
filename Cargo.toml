@@ -6,7 +6,7 @@ keywords = ["bloodhound", "pentest", "ldap", "tokio", "async"]
 repository = "https://github.com/g0h4n/RustHound-CE"
 homepage = "https://github.com/g0h4n/RustHound-CE"
 documentation = "https://docs.rs/rusthound-ce/"
-version = "2.5.6"
+version = "2.5.7"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -46,7 +46,7 @@ anyhow      = "1"
 smb2-client = "0.2"
 dcerpc      = "0.2.7"
 # es8 check
-curl                = { version = "0.4.49", default-features = false, features = ["zlib-ng-compat"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 
 [features]
 noargs = ["winreg"] # Only available for Windows

@@ -13,12 +13,14 @@
 //! NTLM handshake, no relay attempted.
 //!
 //! Module path: `src/modules/adcs/esc8.rs`
-//! Required Cargo dependency: `curl = "0.4"`
+//! Required Cargo dependency: `reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls-ring"] }`
 
 use crate::objects::enterpriseca::{WebEnrollmentEndpoint, WebEnrollmentResult};
 use crate::utils::b64::{b64_decode, b64_encode};
-use curl::easy::{Easy, List};
 use log::{debug, warn};
+use reqwest::blocking::Client;
+use reqwest::header::{AUTHORIZATION, WWW_AUTHENTICATE};
+use std::time::Duration;
 
 // NTLM AvPair IDs
 
@@ -166,7 +168,6 @@ pub fn check_esc8(host: &str) -> Option<Esc8Result> {
         debug!("ESC8 HTTPS {}: EPA/Channel Binding enforced, protected", host);
     }
 
-    // Always emit two entries — one HTTP, one HTTPS
     let endpoints = vec![
         build_http_endpoint(host, http == WebEnrollmentStatus::Vulnerable),
         build_https_endpoint(host, &https),
@@ -191,42 +192,31 @@ fn probe_http(host: &str) -> WebEnrollmentStatus {
     let url = format!("http://{}/certsrv/certfnsh.asp", host);
     debug!("ESC8 HTTP probe: {}", url);
 
-    let mut easy = Easy::new();
-    if easy.url(&url).is_err() {
-        return WebEnrollmentStatus::NotFound;
-    }
-    easy.nobody(true).ok();
-    easy.timeout(std::time::Duration::from_secs(5)).ok();
-    easy.connect_timeout(std::time::Duration::from_secs(3)).ok();
-    easy.follow_location(true).ok();
-    easy.max_redirections(3).ok();
-
-    let mut has_ntlm = false;
-
+    let client = match Client::builder()
+        .timeout(Duration::from_secs(5))
+        .connect_timeout(Duration::from_secs(3))
+        .redirect(reqwest::redirect::Policy::limited(3))
+        .build()
     {
-        let mut transfer = easy.transfer();
-        transfer
-            .header_function(|header| {
-                let h = std::str::from_utf8(header)
-                    .unwrap_or("")
-                    .trim()
-                    .to_lowercase();
-                if h.starts_with("www-authenticate:") {
-                    let val = h["www-authenticate:".len()..].trim();
-                    if val.starts_with("ntlm") || val.starts_with("negotiate") {
-                        has_ntlm = true;
-                    }
-                }
-                true
-            })
-            .ok();
-        transfer.write_function(|data| Ok(data.len())).ok();
-        if transfer.perform().is_err() {
-            return WebEnrollmentStatus::NotFound;
-        }
-    }
+        Ok(c) => c,
+        Err(_) => return WebEnrollmentStatus::NotFound,
+    };
 
-    let status = easy.response_code().unwrap_or(0);
+    let response = match client.head(&url).send() {
+        Ok(r) => r,
+        Err(_) => return WebEnrollmentStatus::NotFound,
+    };
+
+    let status = response.status().as_u16();
+    let has_ntlm = response
+        .headers()
+        .get_all(WWW_AUTHENTICATE)
+        .iter()
+        .any(|v| {
+            let s = v.to_str().unwrap_or("").to_lowercase();
+            s.starts_with("ntlm") || s.starts_with("negotiate")
+        });
+
     debug!("ESC8 HTTP probe {}: status={} ntlm={}", host, status, has_ntlm);
 
     if status == 401 && has_ntlm {
@@ -245,63 +235,52 @@ fn probe_https(host: &str) -> WebEnrollmentStatus {
     let url = format!("https://{}/certsrv/certfnsh.asp", host);
     debug!("ESC8 HTTPS probe: {}", url);
 
-    let neg_b64 = b64_encode(NTLM_NEGOTIATE);
-    let auth_header = format!("Authorization: NTLM {}", neg_b64);
+    let neg_b64    = b64_encode(NTLM_NEGOTIATE);
+    let auth_value = format!("NTLM {}", neg_b64);
 
-    let mut easy = Easy::new();
-    if easy.url(&url).is_err() {
-        return WebEnrollmentStatus::NotFound;
-    }
-    // Ignore TLS cert errors, DCs often present self-signed certs
-    easy.ssl_verify_peer(false).ok();
-    easy.ssl_verify_host(false).ok();
-    easy.timeout(std::time::Duration::from_secs(8)).ok();
-    easy.connect_timeout(std::time::Duration::from_secs(3)).ok();
-
-    // Inject the NTLM Negotiate header so the server sends back a Type 2 Challenge
-    let mut headers = List::new();
-    if headers.append(&auth_header).is_err() {
-        return WebEnrollmentStatus::NotFound;
-    }
-    if easy.http_headers(headers).is_err() {
-        return WebEnrollmentStatus::NotFound;
-    }
-
-    let mut challenge_token: Option<Vec<u8>> = None;
-
+    let client = match Client::builder()
+        .timeout(Duration::from_secs(8))
+        .connect_timeout(Duration::from_secs(3))
+        .danger_accept_invalid_certs(true)
+        .build()
     {
-        let mut transfer = easy.transfer();
-        transfer
-            .header_function(|header| {
-                let h = std::str::from_utf8(header).unwrap_or("").trim();
-                // The server's NTLM Type 2 arrives as:
-                // WWW-Authenticate: NTLM <base64-token>
-                let lower = h.to_ascii_lowercase();
-                if let Some(rest) = lower.strip_prefix("www-authenticate: ntlm ") {
-                    let token_b64 = rest.trim();
-                    // Only keep the token if it's long enough to be a Type 2 message
-                    if token_b64.len() > 16 {
-                        let orig_rest = &h["www-authenticate: ntlm ".len()..].trim();
-                        if let Some(bytes) = b64_decode(orig_rest) {
-                            challenge_token = Some(bytes);
-                        }
-                    }
-                }
-                true
-            })
-            .ok();
-        transfer.write_function(|data| Ok(data.len())).ok();
-        if transfer.perform().is_err() {
-            return WebEnrollmentStatus::NotFound;
-        }
-    }
+        Ok(c) => c,
+        Err(_) => return WebEnrollmentStatus::NotFound,
+    };
 
-    let status = easy.response_code().unwrap_or(0);
+    let response = match client
+        .get(&url)
+        .header(AUTHORIZATION, &auth_value)
+        .send()
+    {
+        Ok(r) => r,
+        Err(_) => return WebEnrollmentStatus::NotFound,
+    };
+
+    let status = response.status().as_u16();
     debug!("ESC8 HTTPS probe {}: status={}", host, status);
 
     if status != 401 {
         return WebEnrollmentStatus::NotFound;
     }
+
+    // Find the NTLM Type 2 Challenge token in WWW-Authenticate headers
+    let challenge_token = response
+        .headers()
+        .get_all(WWW_AUTHENTICATE)
+        .iter()
+        .find_map(|v| {
+            let s = v.to_str().unwrap_or("");
+            let lower = s.to_ascii_lowercase();
+            if let Some(rest) = lower.strip_prefix("ntlm ") {
+                let token_b64 = rest.trim();
+                if token_b64.len() > 16 {
+                    let orig = s["ntlm ".len()..].trim();
+                    return b64_decode(orig);
+                }
+            }
+            None
+        });
 
     match challenge_token {
         None => {
@@ -345,31 +324,23 @@ fn probe_https(host: &str) -> WebEnrollmentStatus {
 ///
 /// AvPair layout: `AvId u16 | AvLen u16 | AvValue [u8; AvLen]`
 pub fn parse_epa_channel_bindings(token: &[u8]) -> bool {
-    // Minimum: fixed header (56 bytes), we only strictly need bytes 0–47
     if token.len() < 48 {
-        debug!(
-            "NTLM token too short ({} bytes), cannot parse as Type 2",
-            token.len()
-        );
+        debug!("NTLM token too short ({} bytes), cannot parse as Type 2", token.len());
         return false;
     }
 
-    // Verify "NTLMSSP\0" signature
     if &token[0..8] != b"NTLMSSP\0" {
         debug!("NTLM signature mismatch");
         return false;
     }
 
-    // Verify MessageType == 2
     let msg_type = u32::from_le_bytes([token[8], token[9], token[10], token[11]]);
     if msg_type != 2 {
         debug!("Not a Type 2 message (MessageType={})", msg_type);
         return false;
     }
 
-    // TargetInfoFields at offset 40
     let ti_len = u16::from_le_bytes([token[40], token[41]]) as usize;
-    // MaxLen at bytes 42-43 (ignored)
     let ti_off = u32::from_le_bytes([token[44], token[45], token[46], token[47]]) as usize;
 
     if ti_len == 0 {
@@ -387,7 +358,6 @@ pub fn parse_epa_channel_bindings(token: &[u8]) -> bool {
     let avpairs = &token[ti_off..ti_off + ti_len];
     debug!("Parsing {} bytes of AvPairs", avpairs.len());
 
-    // Walk the AvPair list
     let mut i = 0;
     while i + 4 <= avpairs.len() {
         let av_id  = u16::from_le_bytes([avpairs[i],     avpairs[i + 1]]);
@@ -400,7 +370,6 @@ pub fn parse_epa_channel_bindings(token: &[u8]) -> bool {
             }
             MV_AV_CHANNEL_BINDINGS => {
                 debug!("MsvAvChannelBindings found (av_len={})", av_len);
-                // Non-zero length = real CBT present = EPA enforced
                 return av_len > 0;
             }
             other => {
@@ -410,7 +379,6 @@ pub fn parse_epa_channel_bindings(token: &[u8]) -> bool {
         }
     }
 
-    // MsvAvChannelBindings not found: EPA not required
     false
 }
 
@@ -422,30 +390,21 @@ mod tests {
 
     // Test helpers
 
-    /// Build a minimal but structurally valid NTLM Type 2 token whose `TargetInfo`
-    /// section contains the provided raw `avpairs` bytes.
     fn build_type2(avpairs: &[u8]) -> Vec<u8> {
         let mut t = Vec::new();
         t.extend_from_slice(b"NTLMSSP\0");
         t.extend_from_slice(&2u32.to_le_bytes());
-        // TargetNameFields: Len=0, MaxLen=0, Offset=56
         t.extend_from_slice(&0u16.to_le_bytes());
         t.extend_from_slice(&0u16.to_le_bytes());
         t.extend_from_slice(&56u32.to_le_bytes());
-        // NegotiateFlags
         t.extend_from_slice(&0u32.to_le_bytes());
-        // ServerChallenge (8 bytes)
         t.extend_from_slice(&[0x01u8; 8]);
-        // Reserved (8 bytes)
         t.extend_from_slice(&[0u8; 8]);
-        // TargetInfoFields
         let ti_len = avpairs.len() as u16;
         t.extend_from_slice(&ti_len.to_le_bytes());
         t.extend_from_slice(&ti_len.to_le_bytes());
         t.extend_from_slice(&56u32.to_le_bytes());
-        // Version (8 bytes, zeroed)
         t.extend_from_slice(&[0u8; 8]);
-        // Payload = TargetInfo
         t.extend_from_slice(avpairs);
         t
     }
@@ -481,28 +440,19 @@ mod tests {
         let cbt = [0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE,
                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
         let token = build_type2(&avpairs_with_channel_bindings(&cbt));
-        assert!(
-            parse_epa_channel_bindings(&token),
-            "Should return true when MsvAvChannelBindings has a non-zero value"
-        );
+        assert!(parse_epa_channel_bindings(&token));
     }
 
     #[test]
     fn epa_present_but_zero_length() {
         let token = build_type2(&avpairs_with_channel_bindings(&[]));
-        assert!(
-            !parse_epa_channel_bindings(&token),
-            "Should return false when MsvAvChannelBindings has zero length"
-        );
+        assert!(!parse_epa_channel_bindings(&token));
     }
 
     #[test]
     fn epa_absent_from_avpairs() {
         let token = build_type2(&avpairs_without_channel_bindings());
-        assert!(
-            !parse_epa_channel_bindings(&token),
-            "Should return false when MsvAvChannelBindings is absent"
-        );
+        assert!(!parse_epa_channel_bindings(&token));
     }
 
     #[test]
@@ -522,10 +472,7 @@ mod tests {
         avpairs.extend_from_slice(&MV_AV_EOL.to_le_bytes());
         avpairs.extend_from_slice(&0u16.to_le_bytes());
         let token = build_type2(&avpairs);
-        assert!(
-            parse_epa_channel_bindings(&token),
-            "Should find MsvAvChannelBindings even when it follows other pairs"
-        );
+        assert!(parse_epa_channel_bindings(&token));
     }
 
     #[test]
@@ -574,11 +521,7 @@ mod tests {
     fn base64_roundtrip_ntlm_negotiate() {
         let encoded = b64_encode(NTLM_NEGOTIATE);
         let decoded = b64_decode(&encoded).expect("base64_decode should succeed");
-        assert_eq!(
-            NTLM_NEGOTIATE,
-            decoded.as_slice(),
-            "base64 round-trip must be lossless for the NTLM negotiate token"
-        );
+        assert_eq!(NTLM_NEGOTIATE, decoded.as_slice());
     }
 
     #[test]
@@ -618,10 +561,11 @@ mod tests {
     #[test]
     fn from_http_vulnerable() {
         let ep = build_http_endpoint("ca.corp.local", true);
-        assert_eq!(ep.result.status, STATUS_VULNERABLE_HTTP);
-        assert!(ep.result.adcs_web_enrollment_http);
-        assert!(!ep.result.adcs_web_enrollment_https);
-        assert!(!ep.result.adcs_web_enrollment_epa);
+        let r  = ep.result.as_ref().unwrap();
+        assert_eq!(r.status, STATUS_VULNERABLE_HTTP);
+        assert!(r.adcs_web_enrollment_http);
+        assert!(!r.adcs_web_enrollment_https);
+        assert!(!r.adcs_web_enrollment_epa);
         assert!(ep.collected);
         assert!(ep.failure_reason.is_none());
     }
@@ -629,32 +573,36 @@ mod tests {
     #[test]
     fn from_http_not_found() {
         let ep = build_http_endpoint("ca.corp.local", false);
-        assert_eq!(ep.result.status, STATUS_NOT_VULN_PORT);
-        assert!(!ep.result.adcs_web_enrollment_http);
+        let r  = ep.result.as_ref().unwrap();
+        assert_eq!(r.status, STATUS_NOT_VULN_PORT);
+        assert!(!r.adcs_web_enrollment_http);
     }
 
     #[test]
     fn from_https_vulnerable() {
         let ep = build_https_endpoint("ca.corp.local", &WebEnrollmentStatus::Vulnerable);
-        assert_eq!(ep.result.status, STATUS_VULNERABLE_HTTPS);
-        assert!(!ep.result.adcs_web_enrollment_http);
-        assert!(ep.result.adcs_web_enrollment_https);
-        assert!(!ep.result.adcs_web_enrollment_epa);
+        let r  = ep.result.as_ref().unwrap();
+        assert_eq!(r.status, STATUS_VULNERABLE_HTTPS);
+        assert!(!r.adcs_web_enrollment_http);
+        assert!(r.adcs_web_enrollment_https);
+        assert!(!r.adcs_web_enrollment_epa);
     }
 
     #[test]
     fn from_https_protected() {
         let ep = build_https_endpoint("ca.corp.local", &WebEnrollmentStatus::Protected);
-        assert_eq!(ep.result.status, STATUS_NOT_VULN_EPA);
-        assert!(ep.result.adcs_web_enrollment_https);
-        assert!(ep.result.adcs_web_enrollment_epa);
+        let r  = ep.result.as_ref().unwrap();
+        assert_eq!(r.status, STATUS_NOT_VULN_EPA);
+        assert!(r.adcs_web_enrollment_https);
+        assert!(r.adcs_web_enrollment_epa);
     }
 
     #[test]
     fn from_https_not_found() {
         let ep = build_https_endpoint("ca.corp.local", &WebEnrollmentStatus::NotFound);
-        assert_eq!(ep.result.status, STATUS_NOT_VULN_PORT);
-        assert!(!ep.result.adcs_web_enrollment_https);
-        assert!(!ep.result.adcs_web_enrollment_epa);
+        let r  = ep.result.as_ref().unwrap();
+        assert_eq!(r.status, STATUS_NOT_VULN_PORT);
+        assert!(!r.adcs_web_enrollment_https);
+        assert!(!r.adcs_web_enrollment_epa);
     }
 }
