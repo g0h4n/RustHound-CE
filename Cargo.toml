@@ -46,7 +46,7 @@ anyhow      = "1"
 smb2-client = "0.2"
 dcerpc      = "0.2.7"
 # es8 check
-curl = { version = "0.4", default-features = false }
+curl                = { version = "0.4.49", default-features = false, features = ["zlib-ng-compat"] }
 
 [features]
 noargs = ["winreg"] # Only available for Windows
