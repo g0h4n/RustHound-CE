@@ -132,6 +132,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         &mut results.mappings.fqdn_ip,
         &mut results.computers,
                 &mut results.users,
+                &mut results.enterprisecas,
     )
     .await?;
 

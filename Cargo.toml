@@ -45,6 +45,8 @@ futures     = "0.3"
 anyhow      = "1"
 smb2-client = "0.2"
 dcerpc      = "0.2.7"
+# es8 check
+curl = "0.4"
 
 [features]
 noargs = ["winreg"] # Only available for Windows
