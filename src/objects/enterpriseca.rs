@@ -28,6 +28,10 @@ pub struct EnterpriseCA {
     ca_registry_data: CARegistryData,
     #[serde(rename = "EnabledCertTemplates")]
     enabled_cert_templates: Vec<Member>,
+    #[serde(rename = "HttpEnrollmentEndpoints")]
+    http_enrollment_endpoints: Vec<String>,
+    #[serde(rename = "HttpsEnrollmentEndpoints")]
+    https_enrollment_endpoints: Vec<String>,
     #[serde(rename = "Aces")]
     aces: Vec<AceTemplate>,
     #[serde(rename = "ObjectIdentifier")]
@@ -54,6 +58,29 @@ impl EnterpriseCA {
     // Mutable access.
     pub fn enabled_cert_templates_mut(&mut self) -> &mut Vec<Member> {
         &mut self.enabled_cert_templates
+    }
+
+    // DNS hostname of the CA, used for the ESC8 probe.
+    pub fn dns_host(&self) -> &str {
+        &self.properties.dnshostname
+    }
+
+    // Inject ESC8 probe results into this EnterpriseCA.
+    pub fn apply_esc8(
+        &mut self,
+        webenrollenabled: bool,
+        webenrollhttpenabled: bool,
+        webenrollhttpsenabled: bool,
+        webenrollhttpsepastatus: String,
+        http_enrollment_endpoints: Vec<String>,
+        https_enrollment_endpoints: Vec<String>,
+    ) {
+        self.properties.webenrollenabled        = webenrollenabled;
+        self.properties.webenrollhttpenabled    = webenrollhttpenabled;
+        self.properties.webenrollhttpsenabled   = webenrollhttpsenabled;
+        self.properties.webenrollhttpsepastatus = webenrollhttpsepastatus;
+        self.http_enrollment_endpoints          = http_enrollment_endpoints;
+        self.https_enrollment_endpoints         = https_enrollment_endpoints;
     }
 
     /// Function to parse and replace value in json template for Enterprise CA object.
@@ -382,6 +409,10 @@ pub struct EnterpriseCAProperties {
     enrollmentagentrestrictionscollected: bool,
     isuserspecifiessanenabledcollected: bool,
     roleseparationenabledcollected: bool,
+    webenrollenabled: bool,
+    webenrollhttpenabled: bool,
+    webenrollhttpsenabled: bool,
+    webenrollhttpsepastatus: String,
 }
 
 impl Default for EnterpriseCAProperties {
@@ -407,6 +438,10 @@ impl Default for EnterpriseCAProperties {
             enrollmentagentrestrictionscollected: false,
             isuserspecifiessanenabledcollected: false,
             roleseparationenabledcollected: false,
+            webenrollenabled: false,
+            webenrollhttpenabled: false,
+            webenrollhttpsenabled: false,
+            webenrollhttpsepastatus: String::from("notdetected"),
        }
     }
  }
