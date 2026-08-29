@@ -15,11 +15,12 @@
 //! Module path: `src/modules/adcs/esc8.rs`
 //! Required Cargo dependency: `curl = "0.4"`
 
+use crate::objects::enterpriseca::{WebEnrollmentEndpoint, WebEnrollmentResult};
 use crate::utils::b64::{b64_decode, b64_encode};
 use curl::easy::{Easy, List};
 use log::{debug, warn};
 
-// NTLM AvPair IDs 
+// NTLM AvPair IDs
 
 /// End-of-list marker in NTLM TargetInfo AvPairs.
 const MV_AV_EOL: u16 = 0x0000;
@@ -27,7 +28,7 @@ const MV_AV_EOL: u16 = 0x0000;
 /// `MsvAvChannelBindings`, present with non-zero length when EPA is required.
 const MV_AV_CHANNEL_BINDINGS: u16 = 0x000A;
 
-// Minimal NTLM Type 1 (Negotiate) 
+// Minimal NTLM Type 1 (Negotiate)
 
 /// Anonymous NTLM Type 1 Negotiate token.
 ///
@@ -54,7 +55,13 @@ const NTLM_NEGOTIATE: &[u8] = &[
     0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00,
 ];
 
-// Public types 
+// Status string values matching BloodHound CE expected format.
+pub const STATUS_VULNERABLE_HTTP:  &str = "Vulnerable_NtlmHttpEndpoint";
+pub const STATUS_VULNERABLE_HTTPS: &str = "Vulnerable_NtlmHttpsEndpointWithoutEpa";
+pub const STATUS_NOT_VULN_EPA:     &str = "NotVulnerable_EpaEnabled";
+pub const STATUS_NOT_VULN_PORT:    &str = "NotVulnerable_PortInaccessible";
+
+// Public types
 
 /// Status of a single web-enrollment endpoint (HTTP or HTTPS).
 #[derive(Debug, Clone, PartialEq)]
@@ -67,32 +74,78 @@ pub enum WebEnrollmentStatus {
     Protected,
 }
 
+// Builder functions for WebEnrollmentEndpoint
+// (impl on an external type would violate the orphan rule)
+
+/// Build a WebEnrollmentEndpoint from a plain-HTTP probe result.
+fn build_http_endpoint(host: &str, vulnerable: bool) -> WebEnrollmentEndpoint {
+    WebEnrollmentEndpoint {
+        result: Some(WebEnrollmentResult {
+            url:                       format!("http://{}/certsrv/", host),
+            enrollment_type:           "WebEnrollmentApplication".to_string(),
+            status: if vulnerable {
+                STATUS_VULNERABLE_HTTP.to_string()
+            } else {
+                STATUS_NOT_VULN_PORT.to_string()
+            },
+            adcs_web_enrollment_http:  vulnerable,
+            adcs_web_enrollment_https: false,
+            adcs_web_enrollment_epa:   false,
+        }),
+        collected:      true,
+        failure_reason: None,
+    }
+}
+
+/// Build a WebEnrollmentEndpoint from an HTTPS probe result.
+fn build_https_endpoint(host: &str, https_status: &WebEnrollmentStatus) -> WebEnrollmentEndpoint {
+    let (status, https, epa) = match https_status {
+        WebEnrollmentStatus::Vulnerable => (STATUS_VULNERABLE_HTTPS.to_string(), true,  false),
+        WebEnrollmentStatus::Protected  => (STATUS_NOT_VULN_EPA.to_string(),     true,  true),
+        WebEnrollmentStatus::NotFound   => (STATUS_NOT_VULN_PORT.to_string(),    false, false),
+    };
+    WebEnrollmentEndpoint {
+        result: Some(WebEnrollmentResult {
+            url:                       format!("https://{}/certsrv/", host),
+            enrollment_type:           "WebEnrollmentApplication".to_string(),
+            status,
+            adcs_web_enrollment_http:  false,
+            adcs_web_enrollment_https: https,
+            adcs_web_enrollment_epa:   epa,
+        }),
+        collected:      true,
+        failure_reason: None,
+    }
+}
+
 /// Full ESC8 probe result for a CA host.
 #[derive(Debug, Clone)]
 pub struct Esc8Result {
     pub host: String,
-    /// HTTP endpoint status (`Vulnerable` if reachable with NTLM; HTTP has no EPA).
+    /// HTTP endpoint status.
     pub http: WebEnrollmentStatus,
     /// HTTPS endpoint status (checks EPA via NTLM Type 2 parsing).
     pub https: WebEnrollmentStatus,
     /// `true` if either endpoint is relay-able.
     pub vulnerable: bool,
+    /// Both endpoints (HTTP + HTTPS), ready for JSON serialization.
+    pub endpoints: Vec<WebEnrollmentEndpoint>,
 }
 
-// Public API 
+// Public API
 
 /// Run the full ESC8 probe against a CA host (both HTTP and HTTPS).
 ///
 /// Returns `None` if the host is completely unreachable on both endpoints.
 pub fn check_esc8(host: &str) -> Option<Esc8Result> {
-    let http = probe_http(host);
+    let http  = probe_http(host);
     let https = probe_https(host);
 
     if http == WebEnrollmentStatus::NotFound && https == WebEnrollmentStatus::NotFound {
         return None;
     }
 
-    let vulnerable = http == WebEnrollmentStatus::Vulnerable
+    let vulnerable = http  == WebEnrollmentStatus::Vulnerable
         || https == WebEnrollmentStatus::Vulnerable;
 
     if http == WebEnrollmentStatus::Vulnerable {
@@ -113,15 +166,22 @@ pub fn check_esc8(host: &str) -> Option<Esc8Result> {
         debug!("ESC8 HTTPS {}: EPA/Channel Binding enforced, protected", host);
     }
 
+    // Always emit two entries — one HTTP, one HTTPS
+    let endpoints = vec![
+        build_http_endpoint(host, http == WebEnrollmentStatus::Vulnerable),
+        build_https_endpoint(host, &https),
+    ];
+
     Some(Esc8Result {
         host: host.to_string(),
         http,
         https,
         vulnerable,
+        endpoints,
     })
 }
 
-// Internal probes 
+// Internal probes
 
 /// Probe the plain-HTTP enrollment endpoint.
 ///
@@ -263,7 +323,7 @@ fn probe_https(host: &str) -> WebEnrollmentStatus {
     }
 }
 
-// NTLM Type 2 / EPA parsing 
+// NTLM Type 2 / EPA parsing
 
 /// Parse an NTLM Type 2 (Challenge) token and return `true` if
 /// `MsvAvChannelBindings` (AvId `0x000A`) is present with a **non-zero** length.
@@ -319,9 +379,7 @@ pub fn parse_epa_channel_bindings(token: &[u8]) -> bool {
     if token.len() < ti_off.saturating_add(ti_len) {
         debug!(
             "TargetInfo out of bounds (off={}, len={}, token_len={})",
-            ti_off,
-            ti_len,
-            token.len()
+            ti_off, ti_len, token.len()
         );
         return false;
     }
@@ -332,7 +390,7 @@ pub fn parse_epa_channel_bindings(token: &[u8]) -> bool {
     // Walk the AvPair list
     let mut i = 0;
     while i + 4 <= avpairs.len() {
-        let av_id = u16::from_le_bytes([avpairs[i], avpairs[i + 1]]);
+        let av_id  = u16::from_le_bytes([avpairs[i],     avpairs[i + 1]]);
         let av_len = u16::from_le_bytes([avpairs[i + 2], avpairs[i + 3]]) as usize;
 
         match av_id {
@@ -356,31 +414,20 @@ pub fn parse_epa_channel_bindings(token: &[u8]) -> bool {
     false
 }
 
-// Tests 
+// Tests
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Test helpers 
+    // Test helpers
 
     /// Build a minimal but structurally valid NTLM Type 2 token whose `TargetInfo`
     /// section contains the provided raw `avpairs` bytes.
-    ///
-    /// Fixed layout used here (all fields little-endian):
-    ///  0–7   : "NTLMSSP\0"
-    ///  8–11  : MessageType = 2
-    ///  12–19 : TargetNameFields  (Len=0, MaxLen=0, Offset=56)
-    ///  20–23 : NegotiateFlags
-    ///  24–31 : ServerChallenge
-    ///  32–39 : Reserved
-    ///  40–47 : TargetInfoFields  (Len=avpairs.len(), MaxLen=same, Offset=56)
-    ///  48–55 : Version (zeroed)
-    ///  56+   : Payload = avpairs
     fn build_type2(avpairs: &[u8]) -> Vec<u8> {
         let mut t = Vec::new();
-        t.extend_from_slice(b"NTLMSSP\0");                          // signature
-        t.extend_from_slice(&2u32.to_le_bytes());                    // MessageType = 2
+        t.extend_from_slice(b"NTLMSSP\0");
+        t.extend_from_slice(&2u32.to_le_bytes());
         // TargetNameFields: Len=0, MaxLen=0, Offset=56
         t.extend_from_slice(&0u16.to_le_bytes());
         t.extend_from_slice(&0u16.to_le_bytes());
@@ -391,54 +438,46 @@ mod tests {
         t.extend_from_slice(&[0x01u8; 8]);
         // Reserved (8 bytes)
         t.extend_from_slice(&[0u8; 8]);
-        // TargetInfoFields: Len=avpairs.len(), MaxLen=same, Offset=56
+        // TargetInfoFields
         let ti_len = avpairs.len() as u16;
         t.extend_from_slice(&ti_len.to_le_bytes());
         t.extend_from_slice(&ti_len.to_le_bytes());
         t.extend_from_slice(&56u32.to_le_bytes());
-        // Version (8 bytes, optional, zeroed)
+        // Version (8 bytes, zeroed)
         t.extend_from_slice(&[0u8; 8]);
         // Payload = TargetInfo
         t.extend_from_slice(avpairs);
         t
     }
 
-    /// Build AvPairs that contain `MsvAvChannelBindings` (AvId=0x000A) followed
-    /// by `MsvAvEOL`.
     fn avpairs_with_channel_bindings(value: &[u8]) -> Vec<u8> {
         let mut p = Vec::new();
         p.extend_from_slice(&MV_AV_CHANNEL_BINDINGS.to_le_bytes());
         p.extend_from_slice(&(value.len() as u16).to_le_bytes());
         p.extend_from_slice(value);
-        // MsvAvEOL
         p.extend_from_slice(&MV_AV_EOL.to_le_bytes());
         p.extend_from_slice(&0u16.to_le_bytes());
         p
     }
 
-    /// Build AvPairs that do NOT contain `MsvAvChannelBindings`, only an
-    /// `MsvAvNbComputerName` and the EOL marker.
     fn avpairs_without_channel_bindings() -> Vec<u8> {
         let name: Vec<u8> = "SERVER"
             .encode_utf16()
             .flat_map(|u| u.to_le_bytes())
             .collect();
         let mut p = Vec::new();
-        // MsvAvNbComputerName (AvId=0x0001)
         p.extend_from_slice(&0x0001u16.to_le_bytes());
         p.extend_from_slice(&(name.len() as u16).to_le_bytes());
         p.extend_from_slice(&name);
-        // MsvAvEOL
         p.extend_from_slice(&MV_AV_EOL.to_le_bytes());
         p.extend_from_slice(&0u16.to_le_bytes());
         p
     }
 
-    // parse_epa_channel_bindings 
+    // parse_epa_channel_bindings
 
     #[test]
     fn epa_present_with_non_zero_value() {
-        // EPA is enforced: MsvAvChannelBindings has a real (non-zero) value.
         let cbt = [0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE,
                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
         let token = build_type2(&avpairs_with_channel_bindings(&cbt));
@@ -450,7 +489,6 @@ mod tests {
 
     #[test]
     fn epa_present_but_zero_length() {
-        // Some servers include the AvPair but with length 0, EPA NOT enforced.
         let token = build_type2(&avpairs_with_channel_bindings(&[]));
         assert!(
             !parse_epa_channel_bindings(&token),
@@ -460,7 +498,6 @@ mod tests {
 
     #[test]
     fn epa_absent_from_avpairs() {
-        // Server does not include MsvAvChannelBindings at all, EPA NOT enforced.
         let token = build_type2(&avpairs_without_channel_bindings());
         assert!(
             !parse_epa_channel_bindings(&token),
@@ -470,25 +507,20 @@ mod tests {
 
     #[test]
     fn epa_multiple_avpairs_with_channel_bindings_last() {
-        // MsvAvChannelBindings appears after other pairs, parser must walk all pairs.
         let name: Vec<u8> = "DC01"
             .encode_utf16()
             .flat_map(|u| u.to_le_bytes())
             .collect();
         let cbt = [0xAA, 0xBB, 0xCC, 0xDD];
         let mut avpairs = Vec::new();
-        // MsvAvNbComputerName
         avpairs.extend_from_slice(&0x0001u16.to_le_bytes());
         avpairs.extend_from_slice(&(name.len() as u16).to_le_bytes());
         avpairs.extend_from_slice(&name);
-        // MsvAvChannelBindings
         avpairs.extend_from_slice(&MV_AV_CHANNEL_BINDINGS.to_le_bytes());
         avpairs.extend_from_slice(&(cbt.len() as u16).to_le_bytes());
         avpairs.extend_from_slice(&cbt);
-        // MsvAvEOL
         avpairs.extend_from_slice(&MV_AV_EOL.to_le_bytes());
         avpairs.extend_from_slice(&0u16.to_le_bytes());
-
         let token = build_type2(&avpairs);
         assert!(
             parse_epa_channel_bindings(&token),
@@ -498,12 +530,11 @@ mod tests {
 
     #[test]
     fn epa_empty_avpairs() {
-        // TargetInfo present but empty, must not panic.
         let token = build_type2(&[]);
         assert!(!parse_epa_channel_bindings(&token));
     }
 
-    // Structural validation 
+    // Structural validation
 
     #[test]
     fn token_too_short_returns_false() {
@@ -514,16 +545,15 @@ mod tests {
     #[test]
     fn invalid_signature_returns_false() {
         let mut token = build_type2(&avpairs_without_channel_bindings());
-        token[0] = 0xFF; // corrupt signature byte
+        token[0] = 0xFF;
         assert!(!parse_epa_channel_bindings(&token));
     }
 
     #[test]
     fn wrong_message_type_returns_false() {
         let mut token = build_type2(&avpairs_without_channel_bindings());
-        // Set MessageType to 1 instead of 2
-        token[8] = 0x01;
-        token[9] = 0x00;
+        token[8]  = 0x01;
+        token[9]  = 0x00;
         token[10] = 0x00;
         token[11] = 0x00;
         assert!(!parse_epa_channel_bindings(&token));
@@ -533,7 +563,6 @@ mod tests {
     fn target_info_offset_out_of_bounds_returns_false() {
         let avpairs = avpairs_without_channel_bindings();
         let mut token = build_type2(&avpairs);
-        // Set TargetInfoFields.Offset to a value past the token end
         let bad_offset = (token.len() + 1024) as u32;
         token[44..48].copy_from_slice(&bad_offset.to_le_bytes());
         assert!(!parse_epa_channel_bindings(&token));
@@ -554,7 +583,6 @@ mod tests {
 
     #[test]
     fn base64_known_vector() {
-        // RFC 4648 §10 test vector
         assert_eq!(b64_encode(b"Man"), "TWFu");
         assert_eq!(b64_decode("TWFu"), Some(b"Man".to_vec()));
     }
@@ -569,7 +597,6 @@ mod tests {
 
     #[test]
     fn base64_decode_invalid_char_returns_none() {
-        // `!` is not a valid Base64 character
         assert_eq!(b64_decode("TQ!Q"), None);
     }
 
@@ -578,13 +605,56 @@ mod tests {
         assert_eq!(b64_decode(""), Some(vec![]));
     }
 
-    // Network probe (non-routable, expected to return None) 
+    // Network probe (non-routable, expected to return None)
 
     #[test]
     fn unreachable_host_returns_none() {
-        // TEST-NET-1 (192.0.2.0/24, RFC 5737) is non-routable in any real network.
-        // The probe must time out cleanly and return None without panicking.
         let result = check_esc8("192.0.2.1");
         assert!(result.is_none(), "Non-routable host must return None");
+    }
+
+    // WebEnrollmentEndpoint builders
+
+    #[test]
+    fn from_http_vulnerable() {
+        let ep = build_http_endpoint("ca.corp.local", true);
+        assert_eq!(ep.result.status, STATUS_VULNERABLE_HTTP);
+        assert!(ep.result.adcs_web_enrollment_http);
+        assert!(!ep.result.adcs_web_enrollment_https);
+        assert!(!ep.result.adcs_web_enrollment_epa);
+        assert!(ep.collected);
+        assert!(ep.failure_reason.is_none());
+    }
+
+    #[test]
+    fn from_http_not_found() {
+        let ep = build_http_endpoint("ca.corp.local", false);
+        assert_eq!(ep.result.status, STATUS_NOT_VULN_PORT);
+        assert!(!ep.result.adcs_web_enrollment_http);
+    }
+
+    #[test]
+    fn from_https_vulnerable() {
+        let ep = build_https_endpoint("ca.corp.local", &WebEnrollmentStatus::Vulnerable);
+        assert_eq!(ep.result.status, STATUS_VULNERABLE_HTTPS);
+        assert!(!ep.result.adcs_web_enrollment_http);
+        assert!(ep.result.adcs_web_enrollment_https);
+        assert!(!ep.result.adcs_web_enrollment_epa);
+    }
+
+    #[test]
+    fn from_https_protected() {
+        let ep = build_https_endpoint("ca.corp.local", &WebEnrollmentStatus::Protected);
+        assert_eq!(ep.result.status, STATUS_NOT_VULN_EPA);
+        assert!(ep.result.adcs_web_enrollment_https);
+        assert!(ep.result.adcs_web_enrollment_epa);
+    }
+
+    #[test]
+    fn from_https_not_found() {
+        let ep = build_https_endpoint("ca.corp.local", &WebEnrollmentStatus::NotFound);
+        assert_eq!(ep.result.status, STATUS_NOT_VULN_PORT);
+        assert!(!ep.result.adcs_web_enrollment_https);
+        assert!(!ep.result.adcs_web_enrollment_epa);
     }
 }

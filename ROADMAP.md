@@ -375,7 +375,7 @@
         - [ ] `CARegistryData`:`IsUserSpecifiesSanEnabled` :red_circle: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38)
         - [ ] `CARegistryData`:`RoleSeparationEnabled` :red_circle:
         - [x] `EnabledCertTemplates` :white_check_mark:
-        - [ ] `HttpEnrollmentEndpoints` :red_circle:
+        - [x] `HttpEnrollmentEndpoints` :white_check_mark:
         - [x] `Aces` :white_check_mark:
         - [x] `ObjectIdentifier` :white_check_mark:
         - [x] `isDeleted` :white_check_mark:

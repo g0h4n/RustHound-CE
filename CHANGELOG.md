@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.6 - 2026-08-29
+
+Issue [#48](https://github.com/g0h4n/RustHound-CE/issues/48), add active ESC8 web enrollment detection.
+
+RustHound-CE now probes each Enterprise CA's `/certsrv/certfnsh.asp` endpoint after LDAP collection, in parallel, and skips the probe automatically when `--collectionmethod DCOnly` is set.
+
+- HTTP probe: flags `401 + WWW-Authenticate: NTLM` on plain HTTP as relay-able (no channel binding possible).
+- HTTPS probe: sends a minimal NTLM Type 1 Negotiate token, parses the server's Type 2 Challenge `TargetInfo` AvPairs to detect [MsvAvChannelBindings](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nlmp/34a9417d-7cc0-43b0-b61c-1f19740df66f) (AvId `0x000A`). Absent or zero-length => EPA disabled => relay possible. Non-zero => EPA enforced => protected.
+- Add `src/utils/b64.rs`: standalone RFC 4648 base64 encode/decode, no external dependency.
+
 ## 2.5.5 - 2026-08-26
 
 Implements the session-collection feature requested in [#46](https://github.com/g0h4n/RustHound-CE/issues/46). A new `src/modules/sessions/mod.rs` module runs after the LDAP phase and enumerates active sessions over three native RPC paths, correlating them into the BloodHound CE computer schema:

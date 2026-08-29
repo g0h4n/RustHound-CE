@@ -57,14 +57,7 @@ pub async fn run_modules(
 
       vec_enterprisecas.par_iter_mut().for_each(|ca| {
          let esc8 = probe_enterpriseca_esc8(ca.dns_host());
-         ca.apply_esc8(
-            esc8.webenrollenabled,
-            esc8.webenrollhttpenabled,
-            esc8.webenrollhttpsenabled,
-            esc8.webenrollhttpsepastatus,
-            esc8.http_enrollment_endpoints,
-            esc8.https_enrollment_endpoints,
-         );
+         ca.apply_esc8(esc8.http_enrollment_endpoints);
       });
    }
 

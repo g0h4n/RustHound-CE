@@ -17,6 +17,34 @@ use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::utils::crypto::calculate_sha1;
 use crate::utils::date::string_to_epoch;
 
+// Web enrollment endpoint types (ESC8)
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WebEnrollmentResult {
+    #[serde(rename = "Url")]
+    pub url: String,
+    #[serde(rename = "Type")]
+    pub enrollment_type: String,
+    #[serde(rename = "Status")]
+    pub status: String,
+    #[serde(rename = "ADCSWebEnrollmentHTTP")]
+    pub adcs_web_enrollment_http: bool,
+    #[serde(rename = "ADCSWebEnrollmentHTTPS")]
+    pub adcs_web_enrollment_https: bool,
+    #[serde(rename = "ADCSWebEnrollmentEPA")]
+    pub adcs_web_enrollment_epa: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WebEnrollmentEndpoint {
+    #[serde(rename = "Result")]
+    pub result: Option<WebEnrollmentResult>,
+    #[serde(rename = "Collected")]
+    pub collected: bool,
+    #[serde(rename = "FailureReason")]
+    pub failure_reason: Option<String>,
+}
+
 /// EnterpriseCA structure
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct EnterpriseCA {
@@ -29,9 +57,7 @@ pub struct EnterpriseCA {
     #[serde(rename = "EnabledCertTemplates")]
     enabled_cert_templates: Vec<Member>,
     #[serde(rename = "HttpEnrollmentEndpoints")]
-    http_enrollment_endpoints: Vec<String>,
-    #[serde(rename = "HttpsEnrollmentEndpoints")]
-    https_enrollment_endpoints: Vec<String>,
+    http_enrollment_endpoints: Vec<WebEnrollmentEndpoint>,
     #[serde(rename = "Aces")]
     aces: Vec<AceTemplate>,
     #[serde(rename = "ObjectIdentifier")]
@@ -66,21 +92,8 @@ impl EnterpriseCA {
     }
 
     // Inject ESC8 probe results into this EnterpriseCA.
-    pub fn apply_esc8(
-        &mut self,
-        webenrollenabled: bool,
-        webenrollhttpenabled: bool,
-        webenrollhttpsenabled: bool,
-        webenrollhttpsepastatus: String,
-        http_enrollment_endpoints: Vec<String>,
-        https_enrollment_endpoints: Vec<String>,
-    ) {
-        self.properties.webenrollenabled        = webenrollenabled;
-        self.properties.webenrollhttpenabled    = webenrollhttpenabled;
-        self.properties.webenrollhttpsenabled   = webenrollhttpsenabled;
-        self.properties.webenrollhttpsepastatus = webenrollhttpsepastatus;
-        self.http_enrollment_endpoints          = http_enrollment_endpoints;
-        self.https_enrollment_endpoints         = https_enrollment_endpoints;
+    pub fn apply_esc8(&mut self, endpoints: Vec<WebEnrollmentEndpoint>) {
+        self.http_enrollment_endpoints = endpoints;
     }
 
     /// Function to parse and replace value in json template for Enterprise CA object.
@@ -409,10 +422,6 @@ pub struct EnterpriseCAProperties {
     enrollmentagentrestrictionscollected: bool,
     isuserspecifiessanenabledcollected: bool,
     roleseparationenabledcollected: bool,
-    webenrollenabled: bool,
-    webenrollhttpenabled: bool,
-    webenrollhttpsenabled: bool,
-    webenrollhttpsepastatus: String,
 }
 
 impl Default for EnterpriseCAProperties {
@@ -438,10 +447,6 @@ impl Default for EnterpriseCAProperties {
             enrollmentagentrestrictionscollected: false,
             isuserspecifiessanenabledcollected: false,
             roleseparationenabledcollected: false,
-            webenrollenabled: false,
-            webenrollhttpenabled: false,
-            webenrollhttpsenabled: false,
-            webenrollhttpsepastatus: String::from("notdetected"),
        }
     }
  }
