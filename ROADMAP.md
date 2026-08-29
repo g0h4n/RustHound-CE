@@ -112,7 +112,7 @@
         - [x] `Properties`:`pwdlastset` :white_check_mark:
         - [x] `Properties`:`serviceprincipalnames` :white_check_mark:
         - [x] `Properties`:`operatingsystem` :white_check_mark:
-        - [ ] `Properties`:`sidhistory`
+        - [x] `Properties`:`sidhistory`
         - [x] `PrimaryGroupSID` :white_check_mark:
         - [x] `AllowedToDelegate` :white_check_mark:
         - [x] `AllowedToAct` :white_check_mark:
@@ -173,7 +173,7 @@
         - [x] `Properties`:`profilepath` :white_check_mark:
         - [x] `Properties`:`admincount` :white_check_mark:
         - [x] `Properties`:`supportedencryptiontypes` :white_check_mark:
-        - [ ] `Properties`:`sidhistory` :red_circle:
+        - [x] `Properties`:`sidhistory` :red_circle:
         - [x] `PrimaryGroupSID` :white_check_mark:
         - [x] `AllowedToDelegate` :white_check_mark:
         - [x] `HasSIDHistory` :white_check_mark:
