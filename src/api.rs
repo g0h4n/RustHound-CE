@@ -25,7 +25,7 @@ use crate::{
         user::User,
         schema::Schema,
     },
-    ldap::LdapSearchEntry,
+    transport::ldap::LdapSearchEntry,
     storage::{DiskStorageReader, EntrySource},
 };
 

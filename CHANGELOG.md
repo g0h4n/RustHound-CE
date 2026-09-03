@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.8 - 2026-09-03
+
+Groundwork for GPO-based collection requested in [#47](https://github.com/g0h4n/RustHound-CE/issues/47) (Privileges / User Rights Assignment) and [#56](https://github.com/g0h4n/RustHound-CE/issues/56) (LocalGroup / Restricted Groups). No new edges yet, this release only prepares the SMB transport so a later version can read GPO files off SYSVOL.
+
+- New `src/transport/` module. `src/ldap.rs` moves to `src/transport/ldap.rs` (re-exported, so `crate::ldap` and `rusthound_ce::ldap_search` keep working), and the SMB code that was inlined in the sessions module moves to `src/transport/smb.rs`.
+- `transport::smb` now returns an authenticated `SmbClient` that is share-agnostic: `connect_authenticated` does only the TCP 445 connection and the NTLM SESSION_SETUP (password or pass-the-hash), then the caller tree-connects the share it needs. `connect_ipc` binds IPC$ for the MS-RPC pipes (SRVSVC / WKSSVC / WINREG), and the new `connect_sysvol` binds SYSVOL for future GPO file reads (`GptTmpl.inf`, `Groups.xml`). A single client keeps one active tree, so `tree_connect` can switch between shares.
+- Every SMB and RPC step is logged (trace / debug on progress, warn on RPC pipe issues, error on connect or auth failure) to make authentication failures diagnosable with `RUST_LOG=trace`.
+- The sessions module (`#46`) is refactored onto this transport; behavior is unchanged.
+
 ## 2.5.7 - 2026-08-29
 
 Fix macOS cross-compilation failure introduced in v2.5.6.

@@ -4,7 +4,7 @@ use std::error::Error;
 
 pub use buffer::{BincodeObjectBuffer, Storage};
 
-use crate::ldap::LdapSearchEntry;
+use crate::transport::ldap::LdapSearchEntry;
 pub use iter::DiskStorageReader;
 
 pub type DiskStorage = BincodeObjectBuffer<LdapSearchEntry>;

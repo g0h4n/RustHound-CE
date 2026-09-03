@@ -16,7 +16,7 @@ use crate::objects::{
     common::{Member, GPOChange, LdapObject}
 };
 //use log::{info,debug,trace};
-use crate::ldap::prepare_ldap_dc;
+use crate::transport::ldap::prepare_ldap_dc;
 use crate::utils::format::domain_to_dc;
 use crate::enums::regex::{COMMON_RE1,DOMAIN_SID_RE1};
 use indicatif::ProgressBar;

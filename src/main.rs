@@ -13,7 +13,7 @@ use env_logger::Builder;
 use log::{error, info, trace};
 
 use rusthound_ce::{
-    args, ldap, objects,
+    args, transport, objects,
     DiskStorage, DiskStorageReader,
     utils,
 };
@@ -27,7 +27,7 @@ use args::auto_args;
 use args::{extract_args, Options};
 
 use banner::{print_banner, print_end_banner};
-use ldap::ldap_search;
+use transport::ldap::ldap_search;
 use modules::run_modules;
 
 const CACHE_DIR: &str = ".rusthound-cache";
@@ -106,7 +106,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             } else {
                 // store ldap results in memory
                 let mut ldap_results = Vec::new();
-                let total = rusthound_ce::ldap::ldap_search(
+                let total = rusthound_ce::transport::ldap::ldap_search(
                     common_args.ldaps,
                     common_args.ip.as_deref(),
                     common_args.port,

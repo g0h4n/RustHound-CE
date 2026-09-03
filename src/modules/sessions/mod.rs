@@ -42,6 +42,7 @@ use dcerpc::rrp::{RegistryClient, RegistrySession};
 use dcerpc::srvsvc::SrvsvcClient;
 use dcerpc::wkssvc::{WkstaUser, WkstaUserClient};
 use smb2_client::SmbClient;
+use crate::transport::smb::{connect_ipc, open_rpc_pipe, SmbAuth};
 
 use crate::args::{CollectionMethod, Options};
 use crate::objects::common::UserComputerSession;
@@ -156,28 +157,24 @@ async fn enumerate_host(
         // Inner block uses `?` for the fatal connect/auth/tree steps; the error
         // is folded into `errors` instead of bubbling out of `work`.
         let fatal: Result<(), String> = async {
-            let mut smb = SmbClient::connect(&format!("{host}:445")).await
-                .map_err(|e| format!("{host} connect: {e}"))?;
 
-            // SESSION_SETUP - NTLMv2 password OR pass-the-hash
-            match nt_hash {
-                Some(h) => smb.login_hash(host, domain, user, h).await
-                              .map_err(|e| format!("{host} auth(PTH): {e}"))?,
-                None    => smb.login(host, domain, user, password).await
-                              .map_err(|e| format!("{host} auth: {e}"))?,
-            }
-            smb.tree_connect(&format!(r"\\{host}\IPC$")).await
-               .map_err(|e| format!("{host} IPC$: {e}"))?;
+            // Using transport/smb.rs 
+            let auth = match nt_hash {
+                Some(h) => SmbAuth::Hash(h),
+                None    => SmbAuth::Password(password),
+            };
+            let mut smb = connect_ipc(host, domain, user, auth).await
+                .map_err(|e| format!("{host}: {e}"))?;
 
             if method.srvsvc() {
-                match srvsvc_sessions(&mut smb).await {
+                match srvsvc_sessions(&mut smb, host).await {
                     Ok((_, 5)) => errors.push(format!("[{host}] SRVSVC rc=5 ACCESS_DENIED (hardened / non-admin)")),
                     Ok((s, _)) => smb_sessions = s,
                     Err(e)     => errors.push(format!("{host} SRVSVC: {e}")),
                 }
             }
             if method.wkssvc() {
-                match enum_wksta(&mut smb).await {
+                match enum_wksta(&mut smb, host).await {
                     Ok((_, 5)) => errors.push(format!("[{host}] WKSSVC rc=5 (local admin required)")),
                     Ok((u, _)) => logged_on = dedup_wksta(u),
                     Err(e)     => errors.push(format!("{host} WKSSVC: {e}")),
@@ -228,16 +225,16 @@ fn is_active(c: &Computer, expiry_days: i64) -> bool {
 }
 
 // Isolated RPC calls (unchanged from HasSession-rs)
-async fn srvsvc_sessions(smb: &mut SmbClient) -> anyhow::Result<(Vec<SmbSession>, u32)> {
-    let pipe = smb.open_pipe("srvsvc").await?;
+async fn srvsvc_sessions(smb: &mut SmbClient, host: &str) -> anyhow::Result<(Vec<SmbSession>, u32)> {
+    let pipe = open_rpc_pipe(smb, host, "srvsvc").await?;
     let mut srv = SrvsvcClient::bind(smb, pipe).await?;
     let (sessions, rc) = srv.enum_sessions().await?;
     Ok((sessions.into_iter()
         .map(|s| SmbSession { user: s.user, _client: s.client }).collect(), rc))
 }
 
-async fn enum_wksta(smb: &mut SmbClient) -> anyhow::Result<(Vec<WkstaUser>, u32)> {
-    let pipe = smb.open_pipe("wkssvc").await?;
+async fn enum_wksta(smb: &mut SmbClient, host: &str) -> anyhow::Result<(Vec<WkstaUser>, u32)> {
+    let pipe = open_rpc_pipe(smb, host, "wkssvc").await?;
     let mut wk = WkstaUserClient::bind(smb, pipe).await?;
     Ok(wk.enum_users().await?)
 }

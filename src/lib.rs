@@ -89,7 +89,7 @@
 //! 
 pub mod args;
 pub mod banner;
-pub mod ldap;
+pub mod transport;
 pub mod utils;
 
 pub mod enums;
@@ -105,7 +105,7 @@ extern crate regex;
 
 // Reimport key functions and structure
 #[doc(inline)]
-pub use ldap::ldap_search;
+pub use transport::ldap::ldap_search;
 #[doc(inline)]
 pub use ldap3::SearchEntry;
 
