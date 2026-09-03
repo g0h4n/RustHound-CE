@@ -48,6 +48,7 @@ impl CollectionMethod {
     pub fn srvsvc(&self)   -> bool { matches!(self, Self::All | Self::Session) }
     pub fn wkssvc(&self)   -> bool { matches!(self, Self::All | Self::Session) }
     pub fn registry(&self) -> bool { matches!(self, Self::All | Self::Session | Self::RegistryOnly) }
+    pub fn does_gpo(&self) -> bool { matches!(self, Self::All | Self::DCOnly) } 
 }
 
 // Current RustHound version

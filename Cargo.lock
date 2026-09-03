@@ -737,8 +737,6 @@ dependencies = [
 [[package]]
 name = "dcerpc"
 version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "401ebd1077148ce70714129a1315d0d21fa8a37ec138f9e69079c641a677e2fa"
 dependencies = [
  "aes",
  "des",
@@ -1795,9 +1793,7 @@ dependencies = [
 
 [[package]]
 name = "ms-ndr"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4b39bbc72af3a4ab742a7ce215365b4b63dd8e56b3e0e7d75ae07f74384324b"
+version = "0.1.0"
 dependencies = [
  "thiserror 2.0.20",
 ]
@@ -2915,8 +2911,6 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 [[package]]
 name = "smb2-client"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "262e6a65d675cef1c23106908b1afb5186b1d7d9b9cd596800d28cc2cacc46d7"
 dependencies = [
  "aes",
  "cmac",

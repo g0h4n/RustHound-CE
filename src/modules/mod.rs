@@ -61,6 +61,40 @@ pub async fn run_modules(
       });
    }
 
+   // [MODULE - GPO SYSVOL] read GptTmpl.inf / Groups.xml off the DC SYSVOL share
+   // <#47 Privileges> and <#56 LocalGroup>. DC-side I/O, so it also runs in DCOnly.
+   if common_args.collection_method.does_gpo() {
+      use crate::transport::smb::{nt_hash_from_str, SmbAuth};
+
+      let user = common_args.username.clone().unwrap_or_default();
+      let password = common_args.password.clone().unwrap_or_default();
+      let nt = common_args.hashes.as_deref().and_then(nt_hash_from_str);
+      let auth = match &nt {
+         Some(h) => SmbAuth::Hash(h),
+         None    => SmbAuth::Password(&password),
+      };
+
+      // SMB target: prefer an explicit IP, else fall back to the domain value.
+      let dc_host = match common_args.ip.as_deref() {
+         Some(ip) if !ip.is_empty() => ip.to_string(),
+         _ => common_args.domain.clone(),
+      };
+
+      if dc_host.is_empty() {
+         log::warn!("[gpo] no DC host (ldapfqdn/ip) available, skipping SYSVOL collection");
+      } else {
+         match gpo::collect_sysvol(&dc_host, &common_args.domain, &common_args.domain, &user, auth).await {
+            Ok(gpos) => {
+               log::info!("[gpo] {} GPO(s) with directives ready for edge mapping", gpos.len());
+               // TODO(edges): map SysvolGpo directives to GPO objects, resolve
+               // links to affected computers, emit Privileges / LocalGroup edges.
+               let _ = gpos;
+            }
+            Err(e) => log::warn!("[gpo] SYSVOL collection failed: {e}"),
+         }
+      }
+   }
+
    // Other modules need to be add here...
    Ok(())
 }

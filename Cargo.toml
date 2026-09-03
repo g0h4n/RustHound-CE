@@ -44,10 +44,13 @@ mimalloc = "0.1"
 # HasSession
 futures     = "0.3" 
 anyhow      = "1"
-smb2-client = "0.2"
-dcerpc      = "0.2.7"
+# smb2-client = "0.2"
+smb2-client = { path = "../smb2-client/", version = "0.2.1" } # patch with list_dir() and read_file() (TO REMOVE after PR validate)
+# dcerpc      = "0.2.7"
+dcerpc      = { path = "../dcerpc/", version = "0.2.7" } # patch linking to smb2-client with list_dir() and read_file() (TO REMOVE after PR validate)
 # es8 check
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+
 
 [features]
 noargs = ["winreg"] # Only available for Windows
