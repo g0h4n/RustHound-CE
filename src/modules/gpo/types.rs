@@ -81,6 +81,7 @@ impl PrivilegeAssignment {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GptTmplPolicy {
     privilege_rights: Vec<PrivilegeAssignment>,
+    restricted_groups: Vec<RestrictedGroupDirective>,
 }
 
 impl GptTmplPolicy {
@@ -91,7 +92,21 @@ impl GptTmplPolicy {
 
     /// Creates a new `GptTmplPolicy` with the given privilege rights.
     pub fn with_privilege_rights(privilege_rights: Vec<PrivilegeAssignment>) -> Self {
-        Self { privilege_rights }
+        Self {
+            privilege_rights,
+            restricted_groups: Vec::new(),
+        }
+    }
+
+    /// Creates a policy containing both privilege assignments and Restricted Groups directives.
+    pub fn with_entries(
+        privilege_rights: Vec<PrivilegeAssignment>,
+        restricted_groups: Vec<RestrictedGroupDirective>,
+    ) -> Self {
+        Self {
+            privilege_rights,
+            restricted_groups,
+        }
     }
 
     /// Returns a slice of all privilege assignments.
@@ -104,6 +119,179 @@ impl GptTmplPolicy {
         self.privilege_rights
             .iter()
             .find(|p| p.privilege.eq_ignore_ascii_case(privilege_name))
+    }
+
+    /// Returns the Restricted Groups directives in source order.
+    pub fn restricted_groups(&self) -> &[RestrictedGroupDirective] {
+        &self.restricted_groups
+    }
+}
+
+/// Describes how a Restricted Groups entry changes local group membership.
+///
+/// The parser preserves policy intent and deliberately does not mutate graph edges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestrictedGroupOperation {
+    /// `__Members`: the listed principals are the complete membership configured by the policy.
+    ReplaceMembers,
+    /// `__Memberof`: the target group is added to each listed parent group.
+    AddToParentGroups,
+}
+
+/// A single entry from the `[Group Membership]` section of `GptTmpl.inf`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestrictedGroupDirective {
+    target: String,
+    operation: RestrictedGroupOperation,
+    principals: Vec<String>,
+}
+
+impl RestrictedGroupDirective {
+    pub fn new(
+        target: impl Into<String>,
+        operation: RestrictedGroupOperation,
+        principals: Vec<String>,
+    ) -> Self {
+        Self {
+            target: target.into(),
+            operation,
+            principals,
+        }
+    }
+
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    pub fn operation(&self) -> RestrictedGroupOperation {
+        self.operation
+    }
+
+    pub fn principals(&self) -> &[String] {
+        &self.principals
+    }
+}
+
+/// Action requested by a Group Policy Preferences local-group item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GppGroupAction {
+    Create,
+    Delete,
+    Replace,
+    Update,
+}
+
+/// Action requested for a member inside a GPP local-group item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GppMemberAction {
+    Add,
+    Remove,
+}
+
+fn nonempty_identity(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GppGroupMember {
+    sid: Option<String>,
+    name: Option<String>,
+    action: GppMemberAction,
+}
+
+impl GppGroupMember {
+    pub fn new(sid: Option<String>, name: Option<String>, action: GppMemberAction) -> Self {
+        Self {
+            sid: nonempty_identity(sid),
+            name: nonempty_identity(name),
+            action,
+        }
+    }
+
+    /// Returns the nonempty SID when present, otherwise the nonempty name.
+    pub fn principal(&self) -> Option<&str> {
+        self.sid.as_deref().or(self.name.as_deref())
+    }
+
+    pub fn sid(&self) -> Option<&str> {
+        self.sid.as_deref()
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    pub fn action(&self) -> GppMemberAction {
+        self.action
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GppLocalGroup {
+    sid: Option<String>,
+    name: Option<String>,
+    action: GppGroupAction,
+    delete_all_users: bool,
+    delete_all_groups: bool,
+    has_item_level_targeting: bool,
+    members: Vec<GppGroupMember>,
+}
+
+impl GppLocalGroup {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        sid: Option<String>,
+        name: Option<String>,
+        action: GppGroupAction,
+        delete_all_users: bool,
+        delete_all_groups: bool,
+        has_item_level_targeting: bool,
+        members: Vec<GppGroupMember>,
+    ) -> Self {
+        Self {
+            sid: nonempty_identity(sid),
+            name: nonempty_identity(name),
+            action,
+            delete_all_users,
+            delete_all_groups,
+            has_item_level_targeting,
+            members,
+        }
+    }
+
+    /// Returns the nonempty group SID when present, otherwise the nonempty group name.
+    pub fn target(&self) -> Option<&str> {
+        self.sid.as_deref().or(self.name.as_deref())
+    }
+
+    pub fn sid(&self) -> Option<&str> {
+        self.sid.as_deref()
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    pub fn action(&self) -> GppGroupAction {
+        self.action
+    }
+
+    pub fn delete_all_users(&self) -> bool {
+        self.delete_all_users
+    }
+
+    pub fn delete_all_groups(&self) -> bool {
+        self.delete_all_groups
+    }
+
+    /// If true, a future applicability layer must evaluate targeting before applying
+    /// this directive; membership must never be applied globally without evaluation.
+    pub fn has_item_level_targeting(&self) -> bool {
+        self.has_item_level_targeting
+    }
+
+    pub fn members(&self) -> &[GppGroupMember] {
+        &self.members
     }
 }
 

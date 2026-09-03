@@ -35,6 +35,7 @@ picky = "=7.0.0-rc.17"
 winreg = { version = "0.52", optional = true }
 sha1 = "0.10"
 regex = "1"
+quick-xml = "0.37"
 once_cell = "1.19"
 bincode = "2.0.1"
 obfstr = "0.4.1"
