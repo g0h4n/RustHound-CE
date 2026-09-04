@@ -33,7 +33,7 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     ip: Option<&str>,
     port: Option<u16>,
     domain: &str,
-    ldapfqdn: &str,
+    ldapfqdn: Option<&str>,
     username: Option<&str>,
     password: Option<&str>,
     hashes: Option<&str>,
@@ -99,9 +99,9 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
         }
     } else {
         debug!("Trying to connect with sasl_gssapi_bind() function (kerberos session)");
-        if !&ldapfqdn.contains("not set") {
+        if let Some(fqdn) = ldapfqdn.filter(|f| !f.is_empty()) {
             #[cfg(not(feature = "nogssapi"))]
-            gssapi_connection(&mut ldap, &ldapfqdn, &domain).await?;
+            gssapi_connection(&mut ldap, fqdn, &domain).await?;
             #[cfg(feature = "nogssapi")]
             {
                 error!("Kerberos auth and GSSAPI not compatible with current os!");
@@ -254,7 +254,7 @@ fn ldap_constructor(
     ip: Option<&str>,
     port: Option<u16>,
     domain: &str,
-    ldapfqdn: &str,
+    ldapfqdn: Option<&str>,
     username: Option<&str>,
     password: Option<&str>,
     hashes: Option<&str>,
@@ -348,7 +348,7 @@ fn ldap_constructor(
         },
         None => "not set".to_owned()
     });
-    debug!("FQDN: {}", ldapfqdn);
+    debug!("FQDN: {}", ldapfqdn.unwrap_or("not set"));
     debug!("Url: {}", s_url);
     debug!("Domain: {}", domain);
     debug!("Username: {}", _s_username);

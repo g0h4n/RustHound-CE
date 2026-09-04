@@ -91,13 +91,14 @@ pub mod args;
 pub mod banner;
 pub mod transport;
 pub mod utils;
+pub mod api;
+pub mod modules;
 
 pub mod enums;
 pub mod json;
 pub mod objects;
 pub (crate) mod storage;
 
-pub (crate) mod api;
 
 extern crate bitflags;
 extern crate chrono;

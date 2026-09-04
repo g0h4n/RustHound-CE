@@ -14,7 +14,7 @@ pub struct Options {
     pub domain: String,
     pub username: Option<String>,
     pub password: Option<String>,
-    pub ldapfqdn: String,
+    pub ldapfqdn: Option<String>,
     pub ip: Option<String>,
     pub port: Option<u16>,
     pub name_server: String,
@@ -231,10 +231,7 @@ pub fn extract_args() -> Options {
     let hashes = matches
         .get_one::<String>("hashes")
         .map(|s| s.to_owned());
-    let f = matches
-        .get_one::<String>("ldapfqdn")
-        .map(|s| s.as_str())
-        .unwrap_or("not set");
+    let f = matches.get_one::<String>("ldapfqdn").cloned();
     let ip = matches.get_one::<String>("ldapip").cloned();    
     let port = match matches.get_one::<String>("ldapport") {
         Some(val) => val.parse::<u16>().ok(),
@@ -300,7 +297,7 @@ pub fn extract_args() -> Options {
         username,
         password,
         hashes,
-        ldapfqdn: f.to_string(),
+        ldapfqdn: f,
         ip,
         port,
         name_server: n.to_string(),
@@ -362,7 +359,7 @@ pub fn auto_args() -> Options {
         domain: domain.to_string(),
         username: "not set".to_string(),
         password: "not set".to_string(),
-        ldapfqdn: fqdn.to_string(),
+        ldapfqdn: Some(fqdn.to_string()),
         ip: None, 
         port: port,
         name_server: "127.0.0.1".to_string(),
