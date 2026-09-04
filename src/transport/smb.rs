@@ -149,7 +149,7 @@ pub async fn open_rpc_pipe(
 pub async fn list_dir(smb: &mut SmbClient, host: &str, path: &str) -> anyhow::Result<Vec<DirEntry>> {
     let shown = if path.is_empty() { r"\" } else { path };
     trace!("[{host}] SMB list dir {shown}");
-    smb.list_dir(path).await.map_err(|e| {
+    smb.list_directory(path).await.map_err(|e| {
         warn!("[{host}] cannot list {shown}: {e}");
         anyhow::anyhow!("list {shown}: {e}")
     })
