@@ -41,8 +41,9 @@ pub async fn run_modules(
    // [MODULE - ESC8] Web enrollment probe on all enterprise CAs.
    // Skipped in DCOnly mode (no direct machine connections allowed).
    // Uses rayon to probe all CAs in parallel (each probe has a 5 s timeout).
-   if !matches!(common_args.collection_method, CollectionMethod::DCOnly)
-      && !ad.enterprisecas.is_empty()
+   if !matches!(common_args.collection_method, CollectionMethod::DCOnly) 
+      && !matches!(common_args.collection_method, CollectionMethod::LdapOnly) 
+      && !ad.enterprisecas.is_empty() 
    {
       log::info!("Starting ESC8 web enrollment probe on {} CA(s)...", ad.enterprisecas.len());
       ad.enterprisecas.par_iter_mut().for_each(|ca| {
