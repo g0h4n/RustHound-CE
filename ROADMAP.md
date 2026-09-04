@@ -70,10 +70,10 @@
         - [x] `Properties`:`functionallevel` :white_check_mark:
         - [x] `Properties`:`dsheuristics` :white_check_mark:
         - [x] `Properties`:`collected` :white_check_mark:
-        - [ ] `GPOChanges`:`LocalAdmins` :red_circle: need RPC call [src GPOLocalGroupProcessor.cs](https://github.com/BloodHoundAD/SharpHoundCommon/blob/v3/src/CommonLib/Processors/GPOLocalGroupProcessor.cs)
-        - [ ] `GPOChanges`:`RemoteDesktopUsers` :red_circle: need RPC call
-        - [ ] `GPOChanges`:`DcomUsers` :red_circle: need RPC call
-        - [ ] `GPOChanges`:`PSRemoteUsers` :red_circle: need RPC call
+        - [x] `GPOChanges`:`LocalAdmins` :white_check_mark:
+        - [x] `GPOChanges`:`RemoteDesktopUsers` :white_check_mark:
+        - [x] `GPOChanges`:`DcomUsers` :white_check_mark:
+        - [x] `GPOChanges`:`PSRemoteUsers` :white_check_mark:
         - [x] `GPOChanges`:`AffectedComputers` :white_check_mark:
         - [x] `ChildObjects` :white_check_mark:
         - [x] `Trusts`:`TargetDomainSid` :white_check_mark:
@@ -122,7 +122,7 @@
         - [x] `PrivilegedSessions` :white_check_mark:
         - [x] `RegistrySessions` :white_check_mark:
         - [ ] `LocalGroups` :red_circle:
-        - [ ] `UserRights` :red_circle: need [LSAOpenPolicy](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/Security/Authentication/Identity/fn.LsaOpenPolicy.html)
+        - [x] `UserRights` :white_check_mark:
         - [ ] `DCRegistryData` :red_circle: need RPC call and [GetRegistryKeyData src Helper.cs](https://github.com/BloodHoundAD/SharpHoundCommon/blob/v3/src/CommonLib/Helpers.cs#L278)
             - [CertificateMappingMethods](https://support.microsoft.com/en-us/topic/kb5014754-certificate-based-authentication-changes-on-windows-domain-controllers-ad2c23b0-15d8-4340-a468-4d4f3b188f16)
             - [StrongCertificateBindingEnforcement](https://support.microsoft.com/en-us/topic/kb5014754-certificate-based-authentication-changes-on-windows-domain-controllers-ad2c23b0-15d8-4340-a468-4d4f3b188f16)
@@ -218,10 +218,10 @@
         - [x] `Properties`:`description` :white_check_mark:
         - [x] `Properties`:`whencreated` :white_check_mark:
         - [x] `Properties`:`blocksinheritance` :white_check_mark:
-        - [ ] `GPOChanges`:`LocalAdmins` :red_circle: need RPC call src [GPOLocalGroupProcessor.cs](https://github.com/BloodHoundAD/SharpHoundCommon/blob/v3/src/CommonLib/Processors/GPOLocalGroupProcessor.cs)
-        - [ ] `GPOChanges`:`RemoteDesktopUsers` :red_circle: need RPC call
-        - [ ] `GPOChanges`:`DcomUsers` :red_circle: need RPC call
-        - [ ] `GPOChanges`:`PSRemoteUsers` :red_circle: need RPC call
+        - [x] `GPOChanges`:`LocalAdmins` :white_check_mark:
+        - [x] `GPOChanges`:`RemoteDesktopUsers` :white_check_mark:
+        - [x] `GPOChanges`:`DcomUsers` :white_check_mark:
+        - [x] `GPOChanges`:`PSRemoteUsers` :white_check_mark:
         - [x] `GPOChanges`:`AffectedComputers` :white_check_mark:
         - [x] `Links` :white_check_mark:
         - [x] `ChildObjects` :white_check_mark:

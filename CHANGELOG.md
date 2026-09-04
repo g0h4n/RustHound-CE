@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.5.9 - 2026-09-04
+
+GPO-based collection from SYSVOL, populating two BloodHound-CE outputs that were previously empty: GPOChanges on OU and Domain objects ([#56](https://github.com/g0h4n/RustHound-CE/issues/56)) and UserRights on Computer objects ([#47](https://github.com/g0h4n/RustHound-CE/issues/47)). Both are derived by reading each GPO's template files off the DC SYSVOL share, with no per-machine RPC.
+
+### Added
+
+- New SMB transport (`transport::smb`): authenticates once (password or pass the hash) and tree-connects the share it needs, IPC$ for the sessions module or SYSVOL for GPO files. Every SMB and RPC step is logged (trace/debug/warn/error).
+- SYSVOL collection (`modules::gpo::sysvol`): walks the Policies directory, reads `GptTmpl.inf` and `Groups.xml`, and feeds the existing parsers. Absent template files are skipped quietly. Thanks to [devdudumuniz](https://github.com/devdudumuniz)!
+- GPO mapping (`modules::gpo::local_group`): mirrors SharpHound GPOLocalGroupProcessor. Fills GPOChanges (LocalAdmins / RemoteDesktopUsers / DcomUsers / PSRemoteUsers) on OU and Domain, and UserRights (SeXxx privileges) on the affected computers.
+- New `LdapOnly` collection method (LDAP only, contacts no machine and does not read SYSVOL), and a `does_gpo()` predicate so GPO collection runs in `All` and `DCOnly`.
+
+### Changed
+
+- `run_modules` now takes `&mut ADResults` instead of individual collections.
+- `ldapfqdn` is now an `Option<String>`; the `"not set"` sentinel is removed and propagated through `ldap_search`.
+- `modules` moved into the library crate.
+- The GPO mapper reuses the checker's work instead of recomputing it: AffectedComputers is left as set by `add_affected_computers*`, and links are correlated by GPO SID via `dn_sid` (after `replace_guid_gplink`). Only the four local-group vectors and the computers' UserRights are filled.
+
 ## 2.5.8 - 2026-09-03
 
 Groundwork for GPO-based collection requested in [#47](https://github.com/g0h4n/RustHound-CE/issues/47) (Privileges / User Rights Assignment) and [#56](https://github.com/g0h4n/RustHound-CE/issues/56) (LocalGroup / Restricted Groups). No new edges yet, this release only prepares the SMB transport so a later version can read GPO files off SYSVOL.

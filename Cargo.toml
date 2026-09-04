@@ -6,7 +6,7 @@ keywords = ["bloodhound", "pentest", "ldap", "tokio", "async"]
 repository = "https://github.com/g0h4n/RustHound-CE"
 homepage = "https://github.com/g0h4n/RustHound-CE"
 documentation = "https://docs.rs/rusthound-ce/"
-version = "2.5.8"
+version = "2.5.9"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -41,12 +41,11 @@ bincode = "2.0.1"
 obfstr = "0.4.1"
 rayon = "1.10"
 mimalloc = "0.1"
-# HasSession
+# HasSession and GPOChanges
 futures     = "0.3" 
 anyhow      = "1"
 smb2-client = "0.2.4"
 dcerpc      = "0.2.7"
-
 # es8 check
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 

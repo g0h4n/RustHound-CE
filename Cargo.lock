@@ -2610,7 +2610,7 @@ dependencies = [
 
 [[package]]
 name = "rusthound-ce"
-version = "2.5.8"
+version = "2.5.9"
 dependencies = [
  "anyhow",
  "bincode",
