@@ -13,7 +13,12 @@
 //! Every SMB step is logged. Use RUST_LOG=trace for the full detail.
 
 use log::{debug, error, trace, warn};
-use smb2_client::SmbClient;
+use smb2_client::{SmbClient, SmbError};
+
+pub use smb2_client::msg::DirEntry;
+
+/// STATUS_OBJECT_PATH_NOT_FOUND (intermediate directory missing).
+const OBJECT_PATH_NOT_FOUND: u32 = 0xC000_003A;
 
 /// Credentials used for the SMB SESSION_SETUP.
 pub enum SmbAuth<'a> {
@@ -135,4 +140,58 @@ pub async fn open_rpc_pipe(
             Err(anyhow::anyhow!("{pipe}: {e}"))
         }
     }
+}
+
+/// List a directory on the connected disk share.
+///
+/// `path` is relative to the share root ("" for the root). Excludes "." and
+/// "..". Tree-connect the share first (see `connect_sysvol`).
+pub async fn list_dir(smb: &mut SmbClient, host: &str, path: &str) -> anyhow::Result<Vec<DirEntry>> {
+    let shown = if path.is_empty() { r"\" } else { path };
+    trace!("[{host}] SMB list dir {shown}");
+    smb.list_directory(path).await.map_err(|e| {
+        warn!("[{host}] cannot list {shown}: {e}");
+        anyhow::anyhow!("list {shown}: {e}")
+    })
+}
+
+/// Read a file off the connected share.
+///
+/// Returns Ok(None) when the file (or an intermediate directory) does not
+/// exist, which is expected on SYSVOL where most GPOs carry no GptTmpl.inf or
+/// Groups.xml. Warns only on a real failure.
+pub async fn try_read_file(
+    smb: &mut SmbClient,
+    host: &str,
+    path: &str,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    use smb2_client::status;
+    trace!("[{host}] SMB read file {path}");
+    match smb.read_file(path).await {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(SmbError::Status(code, _))
+            if code == status::OBJECT_NAME_NOT_FOUND || code == OBJECT_PATH_NOT_FOUND =>
+        {
+            trace!("[{host}] {path} not present, skipping");
+            Ok(None)
+        }
+        Err(e) => {
+            warn!("[{host}] cannot read {path}: {e}");
+            Err(anyhow::anyhow!("read {path}: {e}"))
+        }
+    }
+}
+
+/// Parse an "LMHASH:NTHASH" / ":NTHASH" / "NTHASH" string into the 16 byte NT
+/// hash. Shared by the sessions and gpo modules.
+pub fn nt_hash_from_str(raw: &str) -> Option<[u8; 16]> {
+    let nt = raw.trim().rsplit(':').next().unwrap_or(raw).trim();
+    if nt.len() != 32 || !nt.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let mut out = [0u8; 16];
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&nt[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(out)
 }

@@ -1,5 +1,4 @@
 pub mod banner;
-pub mod modules;
 
 // Scalable multithreaded allocator. The default OS allocator (the Windows
 // process heap in particular) serializes concurrent allocations behind a lock,
@@ -13,9 +12,7 @@ use env_logger::Builder;
 use log::{error, info, trace};
 
 use rusthound_ce::{
-    args, transport, objects,
-    DiskStorage, DiskStorageReader,
-    utils,
+    DiskStorage, DiskStorageReader, args, modules::run_modules, transport, utils,
 };
 
 use std::error::Error;
@@ -28,7 +25,6 @@ use args::{extract_args, Options};
 
 use banner::{print_banner, print_end_banner};
 use transport::ldap::ldap_search;
-use modules::run_modules;
 
 const CACHE_DIR: &str = ".rusthound-cache";
 const CACHE_FILE: &str = "ldap.bin";
@@ -87,7 +83,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     common_args.ip.as_deref(),
                     common_args.port,
                     &common_args.domain,
-                    &common_args.ldapfqdn,
+                    common_args.ldapfqdn.as_deref(),
                     common_args.username.as_deref(),
                     common_args.password.as_deref(),
                     common_args.hashes.as_deref(),
@@ -111,7 +107,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     common_args.ip.as_deref(),
                     common_args.port,
                     &common_args.domain,
-                    &common_args.ldapfqdn,
+                    common_args.ldapfqdn.as_deref(),
                     common_args.username.as_deref(),
                     common_args.password.as_deref(),
                     common_args.hashes.as_deref(),
@@ -127,14 +123,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     // Running modules
-    run_modules(
-        &common_args,
-        &mut results.mappings.fqdn_ip,
-        &mut results.computers,
-                &mut results.users,
-                &mut results.enterprisecas,
-    )
-    .await?;
+    run_modules(&common_args, &mut results).await?;
 
     // Add all in json files
     match rusthound_ce::make_result(&common_args, results) {

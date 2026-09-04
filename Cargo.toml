@@ -44,10 +44,12 @@ mimalloc = "0.1"
 # HasSession
 futures     = "0.3" 
 anyhow      = "1"
-smb2-client = "0.2"
+smb2-client = "0.2.4"
 dcerpc      = "0.2.7"
+
 # es8 check
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+
 
 [features]
 noargs = ["winreg"] # Only available for Windows

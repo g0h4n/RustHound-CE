@@ -41,6 +41,12 @@ impl Group {
     pub fn members(&self) -> &Vec<Member> {
         &self.members
     }
+    pub fn properties(&self) -> &GroupProperties {
+        &self.properties 
+    }
+    pub fn object_identifier(&self) -> &String {
+        &self.object_identifier
+    }
 
     // Mutable access.
     pub fn properties_mut(&mut self) -> &mut GroupProperties {
@@ -323,6 +329,11 @@ pub struct GroupProperties {
 }
 
 impl GroupProperties {
+    // Get access.
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
     // Mutable access.
     pub fn name_mut(&mut self) -> &mut String {
         &mut self.name

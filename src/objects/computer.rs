@@ -100,6 +100,9 @@ impl Computer {
     pub fn registry_sessions_mut(&mut self) -> &mut Session {
         &mut self.registry_sessions
     }
+    pub fn users_rights_mut(&mut self) -> &mut Vec<UserRight> {
+        &mut self.users_rights
+    }
 
     /// Function to parse and replace value for computer object.
     /// <https://bloodhound.readthedocs.io/en/latest/further-reading/json.html#computers>
@@ -539,6 +542,9 @@ impl ComputerProperties {
     }
     pub fn pwdlastset(&self) -> i64 { 
         self.pwdlastset
+    }
+    pub fn distinguishedname(&self) -> &String {
+        &self.distinguishedname
     }
 }
 

@@ -736,9 +736,9 @@ dependencies = [
 
 [[package]]
 name = "dcerpc"
-version = "0.2.7"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "401ebd1077148ce70714129a1315d0d21fa8a37ec138f9e69079c641a677e2fa"
+checksum = "8ea6d00208aa00426820d6e4797ac94fd4252af1feacc046d9b0177796b4259e"
 dependencies = [
  "aes",
  "des",
@@ -1795,9 +1795,9 @@ dependencies = [
 
 [[package]]
 name = "ms-ndr"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4b39bbc72af3a4ab742a7ce215365b4b63dd8e56b3e0e7d75ae07f74384324b"
+checksum = "040c36f13ed63c508641b44fa2eb2084669f4564b7db7e7d7bde85b8edc6eed8"
 dependencies = [
  "thiserror 2.0.20",
 ]
@@ -1814,15 +1814,16 @@ dependencies = [
 
 [[package]]
 name = "ntlmssp"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96c082c39c4f89145da2e663af77d1b5a267b50db36a14b802f990218afe1daa"
+checksum = "356c05d7a1def1ef3ab09a432e86e1f08a30ec5657f7dc022ebabfd901b31ad7"
 dependencies = [
  "hmac",
  "md-5",
  "md4",
  "rand 0.8.5",
  "thiserror 2.0.20",
+ "zeroize",
 ]
 
 [[package]]
@@ -2914,9 +2915,9 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "smb2-client"
-version = "0.2.1"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "262e6a65d675cef1c23106908b1afb5186b1d7d9b9cd596800d28cc2cacc46d7"
+checksum = "30e819de60ba1c46009f7e80894c388377fb8d2f9975cca37d9434dfa3f0247b"
 dependencies = [
  "aes",
  "cmac",
@@ -3720,9 +3721,9 @@ dependencies = [
 
 [[package]]
 name = "windows-sddl"
-version = "0.1.1"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ef8dadeb5428899e3dde4ce431b1fed4384cec66efcaa0d385e1a40697ddabf"
+checksum = "72ec82addc3d261c924c5e0beeec85862cee81f448ddb4b875596be5ac6f04e6"
 dependencies = [
  "bitflags 2.13.1",
  "thiserror 2.0.20",
@@ -4121,9 +4122,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.9.0"
+version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
+checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
 dependencies = [
  "zeroize_derive",
 ]

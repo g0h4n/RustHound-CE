@@ -14,7 +14,7 @@ pub struct Options {
     pub domain: String,
     pub username: Option<String>,
     pub password: Option<String>,
-    pub ldapfqdn: String,
+    pub ldapfqdn: Option<String>,
     pub ip: Option<String>,
     pub port: Option<u16>,
     pub name_server: String,
@@ -36,18 +36,23 @@ pub struct Options {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CollectionMethod {
-    All,            // LDAP + sessions (all three RPC paths)
-    DCOnly,         // LDAP only, never contacts a machine
-    Session,        // LDAP + SRVSVC + WKSSVC + WINREG
+    All,            // LDAP + sessions (all three RPC paths) + SMB on SYSVOL
+    DCOnly,         // LDAP only, never contacts a machine + SMB on SYSVOL
+    Session,        // LDAP + SRVSVC + WKSSVC + WINREG 
     RegistryOnly,   // LDAP + WINREG
+    LdapOnly,       // LDAP
 }
 
 impl CollectionMethod {
-    // DCOnly is the only method that skips the sessions module entirely.
-    pub fn does_sessions(&self) -> bool { !matches!(self, Self::DCOnly) }
+    // Methods that never contact a machine: DCOnly and LdapOnly.
+    pub fn does_sessions(&self) -> bool {
+        !matches!(self, Self::DCOnly | Self::LdapOnly)
+    }
     pub fn srvsvc(&self)   -> bool { matches!(self, Self::All | Self::Session) }
     pub fn wkssvc(&self)   -> bool { matches!(self, Self::All | Self::Session) }
     pub fn registry(&self) -> bool { matches!(self, Self::All | Self::Session | Self::RegistryOnly) }
+    // SYSVOL GPO reading contacts the DC, so LdapOnly stays out of it.
+    pub fn does_gpo(&self)  -> bool { matches!(self, Self::All | Self::DCOnly) }
 }
 
 // Current RustHound version
@@ -133,10 +138,9 @@ fn cli() -> Command {
     .arg(Arg::new("collectionmethod")
         .short('c')
         .long("collectionmethod")
-        .help("Which information to collect. Supported: All (LDAP,SMB,HTTP requests), DCOnly (no computer connections, only LDAP requests), Session (does user session collection), RegistryOnly (does user session collection over registry) (default: All)")
-        .required(false)
+        .help("Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL) (default: All)")        .required(false)
         .value_name("COLLECTIONMETHOD")
-        .value_parser(["All", "DCOnly", "Session", "RegistryOnly"])
+        .value_parser(["All", "DCOnly", "Session", "RegistryOnly", "LdapOnly"])
         .num_args(0..=1)
         .default_missing_value("All")
     )
@@ -227,10 +231,7 @@ pub fn extract_args() -> Options {
     let hashes = matches
         .get_one::<String>("hashes")
         .map(|s| s.to_owned());
-    let f = matches
-        .get_one::<String>("ldapfqdn")
-        .map(|s| s.as_str())
-        .unwrap_or("not set");
+    let f = matches.get_one::<String>("ldapfqdn").cloned();
     let ip = matches.get_one::<String>("ldapip").cloned();    
     let port = match matches.get_one::<String>("ldapport") {
         Some(val) => val.parse::<u16>().ok(),
@@ -278,6 +279,7 @@ pub fn extract_args() -> Options {
         "DCOnly"        => CollectionMethod::DCOnly,
         "Session"       => CollectionMethod::Session,
         "RegistryOnly"  => CollectionMethod::RegistryOnly,
+        "LdapOnly"      => CollectionMethod::LdapOnly,
         _               => CollectionMethod::All,
     };
     let ldap_filter = matches.get_one::<String>("ldap-filter").map(|s| s.as_str()).unwrap_or("(objectClass=*)");
@@ -295,7 +297,7 @@ pub fn extract_args() -> Options {
         username,
         password,
         hashes,
-        ldapfqdn: f.to_string(),
+        ldapfqdn: f,
         ip,
         port,
         name_server: n.to_string(),
@@ -357,7 +359,7 @@ pub fn auto_args() -> Options {
         domain: domain.to_string(),
         username: "not set".to_string(),
         password: "not set".to_string(),
-        ldapfqdn: fqdn.to_string(),
+        ldapfqdn: Some(fqdn.to_string()),
         ip: None, 
         port: port,
         name_server: "127.0.0.1".to_string(),
