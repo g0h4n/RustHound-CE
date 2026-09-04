@@ -425,12 +425,14 @@ pub fn apply_gpo(
     let mut priv_acc: HashMap<String, HashMap<String, Vec<TypedPrincipal>>> = HashMap::new();
 
     for ou in ous.iter_mut() {
+        let label = ou.properties().distinguishedname().clone();
         let links: Vec<Link> = ou.get_links().to_vec();
-        fill_container(&links, ou.gpo_changes_mut(), &by_sid, &resolver, &mut priv_acc);
+        fill_container("OU", &label, &links, ou.gpo_changes_mut(), &by_sid, &resolver, &mut priv_acc);
     }
     for dom in domains.iter_mut() {
+        let label = dom.properties().distinguishedname().clone();
         let links: Vec<Link> = dom.get_links().to_vec();
-        fill_container(&links, dom.gpo_changes_mut(), &by_sid, &resolver, &mut priv_acc);
+        fill_container("Domain", &label, &links, dom.gpo_changes_mut(), &by_sid, &resolver, &mut priv_acc);
     }
 
     for c in computers.iter_mut() {
@@ -443,10 +445,13 @@ pub fn apply_gpo(
             *right.collected_mut() = true;
             ur.push(right);
         }
+        log::trace!("[gpo] Computer {}: {} UserRight(s) set", c.object_identifier(), per.len());
     }
 }
 
 fn fill_container(
+    kind: &str,
+    label: &str,
     links_src: &[Link],
     changes: &mut GPOChange,
     by_sid: &HashMap<String, &SysvolGpo>,
@@ -477,6 +482,15 @@ fn fill_container(
     *changes.remote_desktop_users_mut() = to_members(&merged.remote_desktop_users);
     *changes.dcom_users_mut() = to_members(&merged.dcom_users);
     *changes.psremote_users_mut() = to_members(&merged.psremote_users);
+
+    log::trace!(
+        "[gpo] {kind} {label}: GPOChanges set from {} linked GPO(s) -> {} local admin(s), {} RDP, {} DCOM, {} PSRemote",
+        ordered.len(),
+        merged.local_admins.len(),
+        merged.remote_desktop_users.len(),
+        merged.dcom_users.len(),
+        merged.psremote_users.len(),
+    );
 
     // Privileges -> accumulate onto the computers the checker already resolved.
     let privs = resolve_privileges(&ordered, resolver);
