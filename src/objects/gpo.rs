@@ -1,13 +1,13 @@
-use serde_json::value::Value;
-use serde::{Deserialize, Serialize};
 use ldap3::SearchEntry;
-use log::{debug, trace};
+use log::{debug, trace, warn};
+use serde::{Deserialize, Serialize};
+use serde_json::value::Value;
 use std::collections::HashMap;
 use std::error::Error;
 
-use crate::objects::common::{LdapObject, AceTemplate, Link, SPNTarget, Member};
-use crate::enums::decode_guid_le;
 use crate::enums::acl::parse_ntsecuritydescriptor;
+use crate::enums::decode_guid_le;
+use crate::objects::common::{AceTemplate, LdapObject, Link, Member, SPNTarget};
 use crate::utils::date::string_to_epoch;
 
 /// Gpo structure
@@ -31,10 +31,42 @@ pub struct Gpo {
 
 impl Gpo {
     // New gpo.
-    pub fn new() -> Self { 
-        Self { ..Default::default() } 
+    pub fn new() -> Self {
+        Self {
+            ..Default::default()
+        }
     }
-    
+
+    /// Whether the GPO's computer configuration is applicable.
+    pub fn computer_configuration_enabled(&self) -> bool {
+        if self.properties.gpostatus.is_empty() {
+            warn!(
+                "GPO {} has no flags value; treating computer configuration as enabled for SharpHound compatibility",
+                self.properties.distinguishedname
+            );
+            return true;
+        }
+
+        match self.properties.gpostatus.parse::<u32>() {
+            Ok(flags) => flags & 0x2 == 0,
+            Err(_) => {
+                warn!(
+                    "GPO {} has invalid flags value {:?}; skipping computer configuration",
+                    self.properties.distinguishedname, self.properties.gpostatus
+                );
+                false
+            }
+        }
+    }
+
+    pub(crate) fn sysvol_guid(&self) -> Option<String> {
+        self.properties
+            .gpcpath
+            .rsplit(['\\', '/'])
+            .find(|part| !part.is_empty())
+            .map(str::to_uppercase)
+    }
+
     /// Function to parse and replace value for GPO object.
     /// <https://bloodhound.readthedocs.io/en/latest/further-reading/json.html#gpos>
     pub fn parse(
@@ -87,6 +119,9 @@ impl Gpo {
                 "gPCFileSysPath" => {
                     self.properties.gpcpath = value[0].to_owned();
                 }
+                "flags" => {
+                    self.properties.gpostatus = value.first().cloned().unwrap_or_default();
+                }
                 "isDeleted" => {
                     self.is_deleted = true;
                 }
@@ -124,10 +159,7 @@ impl Gpo {
             self.object_identifier.to_string(),
         );
         // Push DN and Type
-        sid_type.insert(
-            self.object_identifier.to_string(),
-            "Gpo".to_string(),
-        );
+        sid_type.insert(self.object_identifier.to_string(), "Gpo".to_string());
 
         // Trace and return Gpo struct
         // trace!("JSON OUTPUT: {:?}",serde_json::to_string(&self).unwrap());
@@ -169,7 +201,7 @@ impl LdapObject for Gpo {
     fn get_haslaps(&self) -> &bool {
         &false
     }
-    
+
     // Get mutable values
     fn get_aces_mut(&mut self) -> &mut Vec<AceTemplate> {
         &mut self.aces
@@ -180,7 +212,7 @@ impl LdapObject for Gpo {
     fn get_allowed_to_delegate_mut(&mut self) -> &mut Vec<Member> {
         panic!("Not used by current object.");
     }
-    
+
     // Edit values
     fn set_is_acl_protected(&mut self, is_acl_protected: bool) {
         self.is_acl_protected = is_acl_protected;
@@ -209,13 +241,89 @@ impl LdapObject for Gpo {
 // Gpo properties structure
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct GpoProperties {
-   domain: String,
-   name: String,
-   distinguishedname: String,
-   domainsid: String,
-   isaclprotected: bool,
-   highvalue: bool,
-   description: Option<String>,
-   whencreated: i64,
-   gpcpath: String
+    domain: String,
+    name: String,
+    distinguishedname: String,
+    domainsid: String,
+    isaclprotected: bool,
+    highvalue: bool,
+    description: Option<String>,
+    whencreated: i64,
+    gpcpath: String,
+    gpostatus: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_gpo_with_flags(flags: Option<&str>) -> Gpo {
+        let mut attrs = HashMap::from([
+            ("displayName".to_string(), vec!["Test GPO".to_string()]),
+            (
+                "gPCFileSysPath".to_string(),
+                vec![r"\\example.local\SYSVOL\example.local\Policies\{00000000-0000-0000-0000-000000000000}".to_string()],
+            ),
+        ]);
+        if let Some(flags) = flags {
+            attrs.insert("flags".to_string(), vec![flags.to_string()]);
+        }
+        let result = SearchEntry {
+            dn: "CN={00000000-0000-0000-0000-000000000000},CN=Policies,CN=System,DC=example,DC=local".to_string(),
+            attrs,
+            bin_attrs: HashMap::new(),
+        };
+        let mut gpo = Gpo::new();
+        let mut dn_sid = HashMap::new();
+        let mut sid_type = HashMap::new();
+
+        gpo.parse(
+            result,
+            "example.local",
+            &mut dn_sid,
+            &mut sid_type,
+            "S-1-5-21-111111111-222222222-333333333",
+            &HashMap::new(),
+        )
+        .unwrap();
+
+        gpo
+    }
+
+    #[test]
+    fn parse_preserves_gpo_status_for_all_defined_flag_values() {
+        for flags in ["0", "1", "2", "3"] {
+            let gpo = parse_gpo_with_flags(Some(flags));
+            assert_eq!(
+                gpo.to_json()["Properties"]["gpostatus"],
+                flags,
+                "flags={flags} should be retained as gpostatus",
+            );
+        }
+    }
+
+    #[test]
+    fn computer_configuration_applicability_follows_flags_bit_one() {
+        let cases = [
+            (Some("0"), true),
+            (Some("1"), true),
+            (Some("2"), false),
+            (Some("3"), false),
+            (Some("4"), true),
+            (Some("6"), false),
+            (None, true),
+            (Some(""), true),
+            (Some("not-a-number"), false),
+            (Some("4294967296"), false),
+        ];
+
+        for (flags, expected) in cases {
+            let gpo = parse_gpo_with_flags(flags);
+            assert_eq!(
+                gpo.computer_configuration_enabled(),
+                expected,
+                "unexpected computer applicability for flags={flags:?}",
+            );
+        }
+    }
 }
