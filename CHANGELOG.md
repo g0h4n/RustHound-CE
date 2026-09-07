@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.10 - 2026-09-07
+
+Fix GPO collection to honor the computer configuration status. The SYSVOL collector now consults `groupPolicyContainer.flags` before parsing a GPO: per MS-GPOL, `flags=0` and `flags=1` are processed while `flags=2` and `flags=3` (computer policy disabled) are skipped. Previously every GPO folder was parsed, so a computer-disabled policy could still inject phantom LocalAdmins, RemoteDesktopUsers, DcomUsers, PSRemoteUsers or UserRights into the output. `Gpo::parse` now keeps the LDAP `flags` value as `gpostatus` (matching the SharpHound contract), missing or malformed flags fail closed with a warning, and a flags 0/1/2/3 test matrix covers Restricted Groups, Groups.xml and Privilege Rights. Thanks to [@devdudumuniz](https://github.com/devdudumuniz) for reporting and fixing this ([#62](https://github.com/g0h4n/RustHound-CE/issues/62), [#63](https://github.com/g0h4n/RustHound-CE/pull/63)).
+
+Also fixes gPLink GUID resolution to be case-insensitive. `replace_guid_gplink` compared the link GUID against the `dn_sid` keys with a case-sensitive `contains`, so a GPO whose gPLink GUID was stored in a different case than its distinguishedName was left unresolved (its link kept the raw GUID instead of the GPO SID). This affected OU and Domain links in general, and in particular caused such GPOs to be skipped by the SYSVOL GPO mapper, leaving their GPOChanges and UserRights empty. The comparison is now done in uppercase on both sides.
+
 ## 2.5.9 - 2026-09-04
 
 GPO-based collection from SYSVOL, populating two BloodHound-CE outputs that were previously empty: GPOChanges on OU and Domain objects ([#56](https://github.com/g0h4n/RustHound-CE/issues/56)) and UserRights on Computer objects ([#47](https://github.com/g0h4n/RustHound-CE/issues/47)). Both are derived by reading each GPO's template files off the DC SYSVOL share, with no per-machine RPC.
