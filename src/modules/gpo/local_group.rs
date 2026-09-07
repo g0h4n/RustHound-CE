@@ -421,6 +421,11 @@ pub fn apply_gpo(
         }
     }
 
+    log::debug!("[gpo] {} SYSVOL GPO(s) bridged to a SID via dn_sid", by_sid.len());
+    for (sid, g) in &by_sid {
+        log::debug!("[gpo]   {} -> {}", g.guid, sid);
+    }
+
     // computer SID -> (privilege -> members), accumulated across containers.
     let mut priv_acc: HashMap<String, HashMap<String, Vec<TypedPrincipal>>> = HashMap::new();
 
@@ -447,6 +452,7 @@ pub fn apply_gpo(
         }
         log::trace!("[gpo] Computer {}: {} UserRight(s) set", c.object_identifier(), per.len());
     }
+    
 }
 
 fn fill_container(
@@ -492,11 +498,16 @@ fn fill_container(
         merged.psremote_users.len(),
     );
 
+
     // Privileges -> accumulate onto the computers the checker already resolved.
     let privs = resolve_privileges(&ordered, resolver);
     if privs.is_empty() {
         return;
     }
+    log::debug!(
+        "[gpo] {kind} {label}: {} privilege(s) resolved, {} affected computer(s)",
+        privs.len(), changes.affected_computers().len()
+    );
     for m in changes.affected_computers() {
         let per = priv_acc.entry(m.object_identifier().clone()).or_default();
         for (privilege, members) in &privs {
