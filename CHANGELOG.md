@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.11 - 2026-09-08
+
+Add Kerberos (pass-the-ticket) authentication to the SMB transport ([#61](https://github.com/g0h4n/RustHound-CE/issues/61)). With `--kerberos`, RustHound-CE reads a TGT from `KRB5CCNAME`, gets a `cifs/<host>` service ticket and builds a SPNEGO AP-REQ for `SmbClient::login_kerberos`, so the sessions and GPO SYSVOL collections work over Kerberos next to password and pass-the-hash. Pure Rust (self-contained ccache v4 parser + `picky-krb`, no system GSSAPI, no external ccache crate). TGS/AP-REQ and GSS helpers ported from [icedracon/adhammer](https://github.com/icedracon/adhammer).
+
 ## 2.5.10 - 2026-09-07
 
 Fix GPO collection to honor the computer configuration status. The SYSVOL collector now consults `groupPolicyContainer.flags` before parsing a GPO: per MS-GPOL, `flags=0` and `flags=1` are processed while `flags=2` and `flags=3` (computer policy disabled) are skipped. Previously every GPO folder was parsed, so a computer-disabled policy could still inject phantom LocalAdmins, RemoteDesktopUsers, DcomUsers, PSRemoteUsers or UserRights into the output. `Gpo::parse` now keeps the LDAP `flags` value as `gpostatus` (matching the SharpHound contract), missing or malformed flags fail closed with a warning, and a flags 0/1/2/3 test matrix covers Restricted Groups, Groups.xml and Privilege Rights. Thanks to [@devdudumuniz](https://github.com/devdudumuniz) for reporting and fixing this ([#62](https://github.com/g0h4n/RustHound-CE/issues/62), [#63](https://github.com/g0h4n/RustHound-CE/pull/63)).
