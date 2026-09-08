@@ -6,3 +6,4 @@ datas/
 rusthound-ce*
 .vscode
 .rusthound-cache
+*.ccache
