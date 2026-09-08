@@ -11,6 +11,7 @@ use rayon::prelude::*;
 use crate::api::ADResults;
 use crate::args::{CollectionMethod, Options};
 use crate::modules::adcs::probe_enterpriseca_esc8;
+use crate::modules::gpo::sysvol::collect_sysvol_targets;
 
 /// Function to run all modules requested
 pub async fn run_modules(common_args: &Options, ad: &mut ADResults) -> Result<(), Box<dyn Error>> {
@@ -82,47 +83,4 @@ pub async fn run_modules(common_args: &Options, ad: &mut ADResults) -> Result<()
 
     // Other modules need to be add here...
     Ok(())
-}
-
-/// Build the SMB target and credentials, then collect GPO directives off SYSVOL.
-async fn collect_sysvol_targets(
-    common_args: &Options,
-    computer_scope: &gpo::sysvol::ComputerGpoScope,
-) -> anyhow::Result<Vec<gpo::SysvolGpo>> {
-    use crate::transport::smb::{nt_hash_from_str, SmbAuth};
-
-    let user = common_args.username.clone().unwrap_or_default();
-    let password = common_args.password.clone().unwrap_or_default();
-    let nt = common_args.hashes.as_deref().and_then(nt_hash_from_str);
-    let auth = match &nt {
-        Some(h) => SmbAuth::Hash(h),
-        None => SmbAuth::Password(&password),
-    };
-
-    // SMB target: explicit IP first, then the DC FQDN, then the domain value.
-    let dc_host = common_args
-        .ip
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .or(common_args.ldapfqdn.as_deref())
-        .map(str::to_string)
-        .unwrap_or_else(|| common_args.domain.clone());
-
-    if dc_host.is_empty() {
-        log::warn!(
-            "[gpo] no SMB target (ip/ldapfqdn/domain) available, skipping SYSVOL collection"
-        );
-        return Ok(Vec::new());
-    }
-
-    // domain_fqdn (SYSVOL sub-root) = the domain DNS name.
-    gpo::collect_sysvol(
-        &dc_host,
-        &common_args.domain,
-        &common_args.domain,
-        &user,
-        auth,
-        computer_scope,
-    )
-    .await
 }

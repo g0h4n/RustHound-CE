@@ -17,5 +17,4 @@ pub use types::{
     GpoError, GppGroupAction, GppGroupMember, GppLocalGroup, GppMemberAction, GptTmplPolicy,
     PrivilegeAssignment, RestrictedGroupDirective, RestrictedGroupOperation,
 };
-pub use sysvol::{collect as collect_sysvol, SysvolGpo};
 pub use local_group::{apply_gpo, compute_merged, resolve_privileges, ObjectResolver, Resolver};

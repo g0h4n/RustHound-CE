@@ -15,6 +15,7 @@ use log::{debug, info, warn};
 
 use crate::objects::gpo::Gpo;
 use crate::transport::smb::{connect_sysvol, list_dir, try_read_file, SmbAuth};
+use crate::args::Options;
 
 use super::types::{GppLocalGroup, PrivilegeAssignment, RestrictedGroupDirective};
 use super::{parse_gpttmpl_bytes, parse_groups_xml};
@@ -63,11 +64,51 @@ fn is_gpo_guid(name: &str) -> bool {
     name.len() >= 3 && name.starts_with('{') && name.ends_with('}')
 }
 
+/// Build the SMB target and credentials, then collect GPO directives off SYSVOL.
+pub async fn collect_sysvol_targets(common_args: &Options, scope: &ComputerGpoScope) -> anyhow::Result<Vec<SysvolGpo>> {
+    use crate::transport::smb::{nt_hash_from_str, SmbAuth};
+
+    let user = common_args.username.clone().unwrap_or_default();
+    let password = common_args.password.clone().unwrap_or_default();
+    let nt = common_args.hashes.as_deref().and_then(nt_hash_from_str);
+
+    // SMB target (the DC): ldapfqdn, else IP, else domain.
+    let dc_host: String = common_args
+        .ldapfqdn
+        .clone()
+        .filter(|s| !s.is_empty())
+        .or_else(|| common_args.ip.clone())
+        .unwrap_or_else(|| common_args.domain.clone());
+
+    if dc_host.is_empty() {
+        log::warn!("[gpo] no SMB target (ldapfqdn/ip/domain), skipping SYSVOL collection");
+        return Ok(Vec::new());
+    }
+
+    // Kerberos: build a cifs/<dc> ticket from KRB5CCNAME when --kerberos is set.
+    if common_args.kerberos {
+        let ccache = std::env::var("KRB5CCNAME")
+            .map_err(|_| anyhow::anyhow!("--kerberos set but KRB5CCNAME is not defined"))?;
+        let spn = format!("cifs/{dc_host}");
+        let (gss_blob, session_key) =
+            crate::transport::kerberos::kerberos_material_for(&ccache, &spn, &dc_host).await?;
+        let auth = SmbAuth::Kerberos { gss_blob: &gss_blob, session_key: &session_key };
+        return collect(&dc_host, &common_args.domain, &common_args.domain, &user, auth, scope).await;
+    }
+
+    // Password / pass the hash.
+    let auth = match &nt {
+        Some(h) => SmbAuth::Hash(h),
+        None => SmbAuth::Password(&password),
+    };
+    collect(&dc_host, &common_args.domain, &common_args.domain, &user, auth, scope).await
+}
+
 /// Connect to `dc_host` SYSVOL and collect GPO directives.
 ///
 /// `domain_fqdn` is the SYSVOL sub-root (e.g. "DOMAIN.LOCAL"), `domain`/`user`
 /// and `auth` are the SMB credentials.
-pub async fn collect(
+async fn collect(
     dc_host: &str,
     domain_fqdn: &str,
     domain: &str,
