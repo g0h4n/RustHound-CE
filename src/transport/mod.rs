@@ -2,7 +2,13 @@
 //!
 //! * `ldap`: LDAP/LDAPS connection, authentication (NTLM, pass the hash,
 //!   Kerberos) and paged search used for the main collection phase.
-//! * `smb`: SMB and MS RPC transport (SRVSVC, WKSSVC, WINREG) used by the
-//!   sessions module to enumerate live sessions on domain machines.
+//! * `smb`: SMB and MS RPC transport. IPC$ pipes (SRVSVC, WKSSVC, WINREG) for
+//!   the sessions module, and the SYSVOL share for GPO file collection.
+//! * `gss`: minimal SPNEGO framing for a Kerberos AP-REQ carried in an SMB2
+//!   SESSION_SETUP.
+//! * `kerberos`: pass the ticket helper. Loads a TGT from a ccache, requests a
+//!   cifs/<host> service ticket and builds the AP-REQ for SMB Kerberos auth.
 pub mod ldap;
 pub mod smb;
+pub mod gss;
+pub mod kerberos;

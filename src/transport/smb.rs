@@ -26,6 +26,9 @@ pub enum SmbAuth<'a> {
     Password(&'a str),
     /// Pass the hash with a raw 16 byte NT hash.
     Hash(&'a [u8; 16]),
+    /// Pass-the-ticket: SPNEGO AP-REQ blob + 16 byte SMB session key
+    /// already built for this host's cifs/<host> SPN.
+    Kerberos { gss_blob: &'a [u8], session_key: &'a [u8; 16] },
 }
 
 /// UNC of the IPC$ share (MS RPC pipes).
@@ -72,6 +75,13 @@ pub async fn connect_authenticated(
             smb.login(host, domain, user, password).await.map_err(|e| {
                 error!("[{host}] SMB auth failed for {domain}\\{user}: {e}");
                 anyhow::anyhow!("auth: {e}")
+            })?;
+        }
+        SmbAuth::Kerberos { gss_blob, session_key } => {
+            trace!("[{host}] SMB SESSION_SETUP with Kerberos (pass the ticket)");
+            smb.login_kerberos(gss_blob, session_key).await.map_err(|e| {
+                error!("[{host}] SMB Kerberos auth failed: {e}");
+                anyhow::anyhow!("auth(krb): {e}")
             })?;
         }
     }

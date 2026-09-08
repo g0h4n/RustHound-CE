@@ -19,14 +19,12 @@
 //!   * bounded concurrency (throttle) instead of a serial loop;
 //!   * names resolved to SIDs using the already-collected LDAP data.
 //!
+//! Authentication reuses the SMB transport: password, pass the hash, or a
+//! Kerberos ticket (pass the ticket) when --kerberos is set. Kerberos material
+//! is built per host, since the AP-REQ targets that host's cifs/<host> SPN.
+//!
 //! The target host is the computer FQDN (properties.name, from dNSHostName).
 //! We do NOT use the fqdn->ip map: connections go to the FQDN and rely on DNS.
-//!
-//! Accessors this module needs (add them to RustHound-CE if missing):
-//!   impl Computer          -> sessions_mut(), privileged_sessions_mut(),
-//!                             registry_sessions_mut() : &mut Session
-//!   impl ComputerProperties-> pwdlastset(&self) -> i64
-//!   impl User              -> object_identifier(&self) -> &String
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -102,15 +100,33 @@ pub async fn run(
     let nt_hash = parse_hash(args.hashes.as_deref()); // "LM:NT" | ":NT" | "NT" -> [u8;16]
     let method = args.collection_method.clone();
 
+    // Kerberos: ccache path from KRB5CCNAME when --kerberos is set (computed once).
+    let kerberos_ccache: Option<String> = if args.kerberos {
+        std::env::var("KRB5CCNAME").ok()
+    } else {
+        None
+    };
+    // KDC (the DC) to request cifs/<host> service tickets from: FQDN, else IP, else domain.
+    let kdc: String = args
+        .ldapfqdn
+        .clone()
+        .filter(|s| !s.is_empty())
+        .or_else(|| args.ip.clone())
+        .unwrap_or_else(|| args.domain.clone());
+
     let findings: Vec<HostFindings> = stream::iter(targets)
         .map(|(host, computer_sid)| {
             let (sem, domain, user, password, method) =
                 (sem.clone(), domain.clone(), user.clone(), password.clone(), method.clone());
             let nt_hash = nt_hash;
+            let kerberos_ccache = kerberos_ccache.clone();
+            let kdc = kdc.clone();
             async move {
                 let _permit = sem.acquire().await.unwrap();
-                enumerate_host(&host, computer_sid, &domain, &user, &password,
-                               nt_hash.as_ref(), &method).await
+                enumerate_host(
+                    &host, computer_sid, &domain, &user, &password,
+                    nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc, &method,
+                ).await
             }
         })
         .buffer_unordered(DEFAULT_CONCURRENCY)
@@ -130,10 +146,13 @@ pub async fn run(
 }
 
 // Per-host enumeration (adapted from HasSession-rs enumerate_host)
+#[allow(clippy::too_many_arguments)]
 async fn enumerate_host(
     host: &str, computer_sid: String,
     domain: &str, user: &str, password: &str,
     nt_hash: Option<&[u8; 16]>,
+    kerberos_ccache: Option<&str>,
+    kdc: &str,
     method: &CollectionMethod,
 ) -> HostFindings {
     // SharpHound-style reachability pre-check: 445 open within budget
@@ -157,14 +176,23 @@ async fn enumerate_host(
         // Inner block uses `?` for the fatal connect/auth/tree steps; the error
         // is folded into `errors` instead of bubbling out of `work`.
         let fatal: Result<(), String> = async {
-
-            // Using transport/smb.rs 
-            let auth = match nt_hash {
-                Some(h) => SmbAuth::Hash(h),
-                None    => SmbAuth::Password(password),
+            // connect + SESSION_SETUP: Kerberos ticket, or password / pass the hash.
+            let mut smb = if let Some(ccache) = kerberos_ccache {
+                // Kerberos: build a cifs/<host> ticket for THIS host.
+                let spn = format!("cifs/{host}");
+                let (gss_blob, session_key) =
+                    crate::transport::kerberos::kerberos_material_for(ccache, &spn, kdc)
+                        .await
+                        .map_err(|e| format!("{host} krb: {e}"))?;
+                let auth = SmbAuth::Kerberos { gss_blob: &gss_blob, session_key: &session_key };
+                connect_ipc(host, domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
+            } else {
+                let auth = match nt_hash {
+                    Some(h) => SmbAuth::Hash(h),
+                    None    => SmbAuth::Password(password),
+                };
+                connect_ipc(host, domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
             };
-            let mut smb = connect_ipc(host, domain, user, auth).await
-                .map_err(|e| format!("{host}: {e}"))?;
 
             if method.srvsvc() {
                 match srvsvc_sessions(&mut smb, host).await {
@@ -218,7 +246,7 @@ async fn is_reachable(host: &str, port_timeout_ms: u64) -> bool {
 /// enabled + pwdLastSet within the expiry window (~ SharpHound ComputerExpiryDays).
 fn is_active(c: &Computer, expiry_days: i64) -> bool {
     if !*c.properties().enabled() { return false; }
-    let pls = c.properties().pwdlastset(); // add: pub fn pwdlastset(&self) -> i64
+    let pls = c.properties().pwdlastset();
     if pls <= 0 { return false; }
     let now = chrono::Utc::now().timestamp();
     now - pls < expiry_days * 86_400
@@ -261,11 +289,10 @@ async fn enum_registry(smb: &mut SmbClient, domain: &str, user: &str,
 fn build_sid_index(users: &[User]) -> HashMap<String, String> {
     let mut idx = HashMap::with_capacity(users.len() * 2);
     for u in users {
-        let sid = u.object_identifier().clone(); // add: pub fn object_identifier(&self) -> &String
+        let sid = u.object_identifier().clone();
         if sid.is_empty() { continue; }
         let upn = u.properties().name().to_uppercase(); // SAM@DOMAIN.FQDN
         if let Some(sam) = upn.split('@').next() {
-            // bare SAM: keep the first mapping, do not let a later duplicate clobber it
             idx.entry(sam.to_string()).or_insert_with(|| sid.clone());
         }
         idx.insert(upn, sid);
@@ -336,7 +363,7 @@ fn apply_findings(
 
     // SRVSVC -> Sessions
     {
-        let s = computer.sessions_mut(); // add: pub fn sessions_mut(&mut self) -> &mut Session
+        let s = computer.sessions_mut();
         for sess in &hf.smb_sessions {
             match resolve(&sess.user, sid_index, domain) {
                 Some(user_sid) => {
@@ -352,7 +379,7 @@ fn apply_findings(
 
     // WKSSVC -> PrivilegedSessions
     {
-        let p = computer.privileged_sessions_mut(); // add: privileged_sessions_mut()
+        let p = computer.privileged_sessions_mut();
         for u in &hf.logged_on {
             match resolve(&u.username, sid_index, domain) {
                 Some(user_sid) => {
@@ -369,7 +396,7 @@ fn apply_findings(
 
     // WINREG -> RegistrySessions (SIDs already; no resolution needed)
     {
-        let r = computer.registry_sessions_mut(); // add: registry_sessions_mut()
+        let r = computer.registry_sessions_mut();
         for reg in &hf.registry {
             if reg.sid.is_empty() { continue; }
             trace!("[WINREG] {} has session on {fqdn}", reg.sid);

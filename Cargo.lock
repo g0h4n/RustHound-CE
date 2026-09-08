@@ -1803,6 +1803,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "ms-pac-forge"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a413d7f67644e2f3a18d333b5b43632ff2ca48b6c14ccd4f287a15723484d546"
+dependencies = [
+ "anyhow",
+ "hex",
+ "hmac",
+ "md-5",
+ "md4",
+ "picky-asn1",
+ "picky-asn1-der",
+ "picky-krb 0.9.6",
+ "rand 0.8.5",
+]
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2127,6 +2144,31 @@ dependencies = [
  "serde",
  "widestring",
  "zeroize",
+]
+
+[[package]]
+name = "picky-krb"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dd326177336b27707c6f969e14f57a54d6b521ce95cce55785ce02525052783"
+dependencies = [
+ "aes",
+ "byteorder",
+ "cbc",
+ "crypto",
+ "des",
+ "hmac",
+ "num-bigint-dig",
+ "oid",
+ "pbkdf2",
+ "picky-asn1",
+ "picky-asn1-der",
+ "picky-asn1-x509",
+ "rand 0.8.5",
+ "serde",
+ "sha1",
+ "thiserror 1.0.69",
+ "uuid",
 ]
 
 [[package]]
@@ -2626,12 +2668,16 @@ dependencies = [
  "ldap3",
  "log",
  "mimalloc",
+ "ms-pac-forge",
  "nom",
  "obfstr",
  "once_cell",
  "picky",
- "picky-krb",
+ "picky-asn1",
+ "picky-asn1-der",
+ "picky-krb 0.11.1",
  "quick-xml",
+ "rand 0.8.5",
  "rayon",
  "regex",
  "reqwest",
@@ -2991,7 +3037,7 @@ dependencies = [
  "picky-asn1",
  "picky-asn1-der",
  "picky-asn1-x509",
- "picky-krb",
+ "picky-krb 0.11.1",
  "rand 0.8.5",
  "rsa",
  "rustls",
