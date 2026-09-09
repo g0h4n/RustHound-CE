@@ -14,7 +14,17 @@ use crate::modules::adcs::probe_enterpriseca_esc8;
 use crate::modules::gpo::sysvol::collect_sysvol_targets;
 
 /// Function to run all modules requested
-pub async fn run_modules(common_args: &Options, ad: &mut ADResults) -> Result<(), Box<dyn Error>> {
+pub async fn run_modules(
+    common_args: &Options,
+    ad: &mut ADResults
+) -> Result<(), Box<dyn Error>> {
+
+    let cert_auth = common_args.uses_cert();
+    if cert_auth {
+        log::warn!("Certificate authentication in use: skipping SMB-based modules \
+                    (sessions and GPO/SYSVOL) no SMB credentials available.");
+    }
+
     // [MODULE - RESOLVER] Resolve FQDN to IP address.
     if common_args.fqdn_resolver {
         resolver::resolv::resolving_all_fqdn(
@@ -32,7 +42,7 @@ pub async fn run_modules(common_args: &Options, ad: &mut ADResults) -> Result<()
     // - SRVSVC / NetrSessionEnum - inbound SMB sessions (client IP + username).
     // - WKSSVC / NetrWkstaUserEnum - users with an active logon context on the machine.
     // - WINREG / HKEY_USERS - SIDs of loaded profile hives (= logged-on users).
-    if common_args.collection_method.does_sessions() {
+    if common_args.collection_method.does_sessions() && !cert_auth {
         sessions::run(common_args, &ad.users, &mut ad.computers).await?;
     }
 
@@ -55,7 +65,7 @@ pub async fn run_modules(common_args: &Options, ad: &mut ADResults) -> Result<()
 
     // [MODULE - GPO SYSVOL] read GptTmpl.inf / Groups.xml off the DC SYSVOL share.
     // <#47 Privileges> and <#56 LocalGroup>. DC-side I/O, so it also runs in DCOnly.
-    if common_args.collection_method.does_gpo() {
+    if common_args.collection_method.does_gpo() && !cert_auth {
         let computer_scope = gpo::sysvol::ComputerGpoScope::from_gpos(&ad.gpos);
         let sysvol = match collect_sysvol_targets(common_args, &computer_scope).await {
             Ok(v) => v,

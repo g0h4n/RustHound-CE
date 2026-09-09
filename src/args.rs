@@ -39,6 +39,14 @@ pub struct Options {
     pub resume: bool,
 }
 
+impl Options {
+    /// True when authenticating with a client certificate (no SMB credentials
+    /// are available, so SMB-based modules must be skipped).
+    pub fn uses_cert(&self) -> bool {
+        self.pfx.is_some() || self.crt.is_some()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum CollectionMethod {
     All,            // LDAP + sessions (all three RPC paths) + SMB on SYSVOL
