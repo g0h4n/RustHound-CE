@@ -53,6 +53,12 @@ picky-asn1      = "0.10"
 picky-asn1-der  = "0.5"
 ms-pac-forge    = "0.1.3"
 rand = "0.8"
+# rustls pieces (aligned with what ldap3 0.12.1 pulls: rustls 0.23, pki-types 1).
+rustls           = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile   = "2"
+rustls-pki-types = "1"
+# PKCS#12 (.pfx) parsing, pure Rust.
+p12-keystore = "0.3"
 
 [features]
 noargs = ["winreg"] # Only available for Windows
