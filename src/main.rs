@@ -4,19 +4,15 @@ pub mod banner;
 // process heap in particular) serializes concurrent allocations behind a lock,
 // which throttled every parallel phase — decode, parse, and the checker all
 // allocate heavily, so threads spent their time contending instead of working.
-// mimalloc uses per-thread heaps and removes that bottleneck.
+// mimalloc uses per-thread heaps and removes that bottleneck.pub mod banner;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use env_logger::Builder;
 use log::{error, info, trace};
 
-use rusthound_ce::{
-    DiskStorage, DiskStorageReader, args, modules::run_modules, transport, utils,
-};
-
+use rusthound_ce::{args, ldap_auth, api::run_collection, utils};
 use std::error::Error;
-use colored::Colorize;
 
 #[cfg(feature = "noargs")]
 use args::auto_args;
@@ -24,10 +20,6 @@ use args::auto_args;
 use args::{extract_args, Options};
 
 use banner::{print_banner, print_end_banner};
-use transport::ldap::ldap_search;
-
-const CACHE_DIR: &str = ".rusthound-cache";
-const CACHE_FILE: &str = "ldap.bin";
 
 /// Main of RustHound
 #[tokio::main]
@@ -47,97 +39,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .filter_level(log::LevelFilter::Error)
         .init();
 
-    // Get verbose level
     info!("Verbosity level: {:?}", common_args.verbose);
     info!("Collection method: {:?}", common_args.collection_method);
 
-    let mut results = match common_args.resume {
-        true => {
-            let ldap_cache_path = std::path::PathBuf::from(CACHE_DIR)
-                .join(&common_args.domain)
-                .join(CACHE_FILE);
-            info!("Resuming from cache: {}", format!("{}",ldap_cache_path.display()).bold());
-            let cache = DiskStorageReader::from_path(ldap_cache_path)?;
-            rusthound_ce::prepare_results_from_disk(cache, &common_args, None).await?
-        }
-        false => {
-            if common_args.cache {
-                // store ldap results in cache
-                let ldap_cache_path = std::path::PathBuf::from(CACHE_DIR)
-                    .join(&common_args.domain)
-                    .join(CACHE_FILE);
-                std::fs::create_dir_all(
-                    ldap_cache_path
-                        .parent()
-                        .expect("Unable to get parent directory for cache path"), // shouldn't happen
-                )?;
-                info!("Using cache for LDAP search: {}", format!("{}",ldap_cache_path.display()).bold());
+    // 1) Authenticate to the Domain Controller.
+    let mut ldap = ldap_auth(&common_args).await?;
 
-                let mut cache_writer = DiskStorage::new_with_capacity(
-                    ldap_cache_path,
-                    common_args.cache_buffer_size,
-                )?;
-
-                let total_cached = ldap_search(
-                    common_args.ldaps,
-                    common_args.ip.as_deref(),
-                    common_args.port,
-                    &common_args.domain,
-                    common_args.ldapfqdn.as_deref(),
-                    common_args.username.as_deref(),
-                    common_args.password.as_deref(),
-                    common_args.hashes.as_deref(),
-                    common_args.kerberos,
-                    common_args.pfx.as_deref(),
-                    common_args.pfx_pass.as_deref(),
-                    common_args.crt.as_deref(),
-                    common_args.key.as_deref(),
-                    &common_args.ldap_filter,
-                    &mut cache_writer,
-                )
-                .await?;
-
-                rusthound_ce::prepare_results_from_disk(
-                    cache_writer.into_reader()?,
-                    &common_args,
-                    Some(total_cached),
-                )
-                .await?
-            } else {
-                // store ldap results in memory
-                let mut ldap_results = Vec::new();
-                let total = rusthound_ce::transport::ldap::ldap_search(
-                    common_args.ldaps,
-                    common_args.ip.as_deref(),
-                    common_args.port,
-                    &common_args.domain,
-                    common_args.ldapfqdn.as_deref(),
-                    common_args.username.as_deref(),
-                    common_args.password.as_deref(),
-                    common_args.hashes.as_deref(),
-                    common_args.kerberos,
-                    common_args.pfx.as_deref(),
-                    common_args.pfx_pass.as_deref(),
-                    common_args.crt.as_deref(),
-                    common_args.key.as_deref(),
-                    &common_args.ldap_filter,
-                    &mut ldap_results,
-                )
-                .await?;
-                rusthound_ce::prepare_results_from_source(ldap_results, &common_args, Some(total))
-                    .await?
-            }
-        }
-    };
-
-    // Running modules
-    run_modules(&common_args, &mut results).await?;
-
-    // Add all in json files
-    match rusthound_ce::make_result(&common_args, results) {
-        Ok(_) => trace!("Making json/zip files finished!"),
-        Err(err) => error!("Error. Reason: {err}"),
+    // 2) Run the full workflow (collect -> parse -> modules -> JSON/zip).
+    match run_collection(&mut ldap, &common_args).await {
+        Ok(out) => trace!("Output written to {out}"),
+        Err(err) => error!("Collection failed. Reason: {err}"),
     }
+
+    // Close the session.
+    let _ = ldap.unbind().await;
 
     // End banner
     print_end_banner();

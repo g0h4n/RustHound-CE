@@ -112,7 +112,7 @@ extern crate regex;
 
 // Reimport key functions and structure
 #[doc(inline)]
-pub use transport::ldap::ldap_search;
+pub use transport::ldap::ldap_auth;
 #[doc(inline)]
 pub use ldap3::SearchEntry;
 

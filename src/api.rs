@@ -3,6 +3,10 @@ use std::{collections::HashMap, error::Error};
 use indicatif::ProgressBar;
 use ldap3::SearchEntry;
 use rayon::prelude::*;
+use std::path::PathBuf;
+
+const CACHE_DIR: &str = ".rusthound-cache";
+const CACHE_FILE: &str = "ldap.bin";
 
 use crate::{
     args::Options, banner::progress_bar, enums::{PARSER_MOD_RE1, PARSER_MOD_RE2, Type, get_type}, json::checker::check_all_result, 
@@ -25,8 +29,10 @@ use crate::{
         user::User,
         schema::Schema,
     },
-    transport::ldap::LdapSearchEntry,
-    storage::{DiskStorageReader, EntrySource},
+    transport::ldap::{LdapSearchEntry, collect_from_ldap_into},
+    storage::{DiskStorageReader, DiskStorage, EntrySource},
+    modules::run_modules,
+    json::maker::make_result,
 };
 
 #[derive(Default)]
@@ -525,3 +531,40 @@ fn decode_and_route(
     Ok(())
 }
 
+fn cache_path(domain: &str) -> PathBuf {
+    PathBuf::from(CACHE_DIR).join(domain).join(CACHE_FILE)
+}
+
+/// Run the complete RustHound-CE workflow over an already-authenticated LDAP
+/// session (get one from `transport::ldap::ldap_auth`, or bring your own):
+/// collect -> parse -> modules -> JSON/zip. Returns the output path.
+///
+/// Storage follows `options`: `resume` parses an existing disk cache without
+/// collecting; `cache` streams to `.rusthound-cache/<domain>/ldap.bin`;
+/// otherwise entries are kept in memory. Modules run per `collection_method`.
+///
+/// Never calls `process::exit`; never unbinds/drops the session.
+pub async fn run_collection(
+    ldap: &mut ldap3::Ldap,
+    options: &Options,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut results = if options.resume {
+        let reader = DiskStorageReader::from_path(cache_path(&options.domain))?;
+        prepare_results_from_disk(reader, options, None).await?
+    } else if options.cache {
+        let path = cache_path(&options.domain);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut writer = DiskStorage::new_with_capacity(path, options.cache_buffer_size)?;
+        let total = collect_from_ldap_into(ldap, &options.ldap_filter, &mut writer).await?;
+        prepare_results_from_disk(writer.into_reader()?, options, Some(total)).await?
+    } else {
+        let mut entries = Vec::new();
+        let total = collect_from_ldap_into(ldap, &options.ldap_filter, &mut entries).await?;
+        prepare_results_from_source(entries, options, Some(total)).await?
+    };
+
+    run_modules(options, &mut results).await?;
+    make_result(options, results)
+}

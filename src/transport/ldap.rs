@@ -1,16 +1,13 @@
-//! Run a LDAP enumeration and parse results
+//! LDAP authentication and collection.
 //!
-//! This module will prepare your connection and request the LDAP server to retrieve all the information needed to create the json files.
+//! Public entry point:
+//!   * [`ldap_auth`] : connect + authenticate, returns a ready `Ldap` session.
 //!
-//! rusthound sends only one request to the LDAP server, if the result of this one is higher than the limit of the LDAP server limit it will be split in several requests to avoid having an error 4 (LDAP_SIZELIMIT_EXCEED).
-//!
-//! Example in rust
-//!
-//! ```ignore
-//! let search = ldap_search(...)
-//! ```
+//! The full library workflow (auth + collect + parse + modules + output) is
+//! `api::run_collection`, which takes the authenticated session from `ldap_auth`.
+//! Collection itself is done by the crate-internal `collect_from_ldap_into`.
 
-// use crate::errors::Result;
+use crate::args::Options;
 use crate::banner::progress_bar;
 use crate::storage::Storage;
 use crate::utils::format::domain_to_dc;
@@ -25,65 +22,53 @@ use log::{info, debug, error, trace};
 use std::io::{self, Write, stdin};
 use std::collections::HashMap;
 use std::error::Error;
-use std::process;
 
-/// Function to request all AD values.
-#[allow(clippy::too_many_arguments)]
-pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
-    ldaps: bool,
-    ip: Option<&str>,
-    port: Option<u16>,
-    domain: &str,
-    ldapfqdn: Option<&str>,
-    username: Option<&str>,
-    password: Option<&str>,
-    hashes: Option<&str>,
-    kerberos: bool,
-    // Certificate authentication (Pass-the-Certificate / Schannel)
-    pfx: Option<&str>,
-    pfx_pass: Option<&str>,
-    crt: Option<&str>,
-    key: Option<&str>,
-    ldapfilter: &str,
-    storage: &mut S,
-) -> Result<usize, Box<dyn Error>> {
-    // Certificate authentication is enabled when a PFX or a CRT+KEY is provided.
-    let use_cert = pfx.is_some() || crt.is_some();
+/// Connect to the Domain Controller and authenticate, returning a ready
+/// `ldap3::Ldap` session. The method is chosen from `options`:
+///
+///   - certificate  : `pfx` or `crt`/`key` present (Pass-the-Certificate)
+///   - pass-the-hash: `hashes` present (NTLM)
+///   - Kerberos     : `kerberos == true` (ccache from KRB5CCNAME)
+///   - simple bind  : otherwise (`username` / `password`)
+///
+/// Certificate auth uses LDAP 389 + StartTLS by default, or LDAPS 636 with
+/// `options.ldaps`. Returns `Err` on failure (no `process::exit`), and never
+/// unbinds — the caller owns the returned session.
+pub async fn ldap_auth(options: &Options) -> Result<ldap3::Ldap, Box<dyn Error>> {
+    let use_cert = options.pfx.is_some() || options.crt.is_some();
 
-    // Certificate auth transport:
-    //   - with --ldaps : LDAPS 636, implicit Schannel mapping, no bind.
-    //   - without      : LDAP 389 + StartTLS, SASL EXTERNAL bind (default).
-    // So StartTLS is used for cert auth unless --ldaps is explicitly requested.
-    let starttls = use_cert && !ldaps;
-
-    // Non-certificate modes keep the user-provided `ldaps` value unchanged;
-    // cert over LDAPS forces the ldaps scheme, cert over StartTLS keeps 389.
-    let effective_ldaps = if use_cert { !starttls } else { ldaps };
-
-    // Certificate transport needs a port consistent with the scheme, otherwise
-    // `prepare_ldap_url` (which also treats port 636 as LDAPS) would build an
-    // ldaps:// URL while StartTLS is enabled, or vice-versa. When the user does
-    // not pass an explicit port, pick the default for the chosen cert transport:
-    //   StartTLS -> 389, LDAPS -> 636. A user-supplied port is respected.
+    // Certificate transport: StartTLS by default, LDAPS with --ldaps.
+    let starttls = use_cert && !options.ldaps;
+    let effective_ldaps = if use_cert { !starttls } else { options.ldaps };
     let effective_port = if use_cert {
-        port.or(Some(if starttls { 389 } else { 636 }))
+        options.port.or(Some(if starttls { 389 } else { 636 }))
     } else {
-        port
+        options.port
     };
 
-    // Construct LDAP args (URL scheme follows effective_ldaps)
     let ldap_args = ldap_constructor(
-        effective_ldaps, ip, effective_port, domain, ldapfqdn, username, password, hashes, kerberos, use_cert,
+        effective_ldaps,
+        options.ip.as_deref(),
+        effective_port,
+        &options.domain,
+        options.ldapfqdn.as_deref(),
+        options.username.as_deref(),
+        options.password.as_deref(),
+        options.hashes.as_deref(),
+        options.kerberos,
+        use_cert,
     )?;
 
-    // LDAP connection settings
     let mut consettings = LdapConnSettings::new()
         .set_conn_timeout(std::time::Duration::from_secs(10))
         .set_no_tls_verify(true);
-
-    // Attach the client certificate config when doing certificate auth.
     if use_cert {
-        let config = crate::transport::cert::build_client_config(pfx, pfx_pass, crt, key)?;
+        let config = crate::transport::cert::build_client_config(
+            options.pfx.as_deref(),
+            options.pfx_pass.as_deref(),
+            options.crt.as_deref(),
+            options.key.as_deref(),
+        )?;
         consettings = consettings.set_config(config);
         if starttls {
             consettings = consettings.set_starttls(true);
@@ -93,233 +78,151 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     let (conn, mut ldap) = LdapConnAsync::with_settings(consettings, &ldap_args.s_url).await?;
     ldap3::drive!(conn);
 
+    let domain = &options.domain;
+
     if use_cert {
-        // Pass-the-Certificate. AD maps the client certificate to an account at
-        // the TLS layer (Schannel). Over LDAPS the mapping is implicit (no bind);
-        // over StartTLS we authenticate with SASL EXTERNAL. In both cases the
-        // mapped identity is confirmed with a whoami before collection.
+        // Pass-the-Certificate: SASL EXTERNAL over StartTLS, or implicit
+        // Schannel mapping over LDAPS. Confirm the mapped identity with whoami.
         if starttls {
-            debug!("Trying certificate authentication (StartTLS + SASL EXTERNAL)");
-            match ldap.sasl_external_bind().await.and_then(|r| r.success()) {
-                Ok(_) => {}
-                Err(err) => {
-                    error!(
-                        "Certificate SASL EXTERNAL bind failed on {} Active Directory. \
-                         Some DCs refuse it over StartTLS; try LDAPS. Reason: {err}\n",
-                        domain.to_uppercase().bold().red()
-                    );
-                    process::exit(0x0100);
-                }
-            }
+            debug!("Certificate authentication (StartTLS + SASL EXTERNAL)");
+            ldap.sasl_external_bind()
+                .await
+                .and_then(|r| r.success())
+                .map_err(|e| format!("certificate SASL EXTERNAL bind failed (try --ldaps): {e}"))?;
         } else {
-            debug!("Trying certificate authentication (LDAPS, implicit Schannel mapping)");
+            debug!("Certificate authentication (LDAPS, implicit Schannel mapping)");
         }
-
-        // Confirm the mapped identity via whoami (both transports).
-        match ldap.extended(WhoAmI).await.map(|r| r.success()) {
-            Ok(Ok((exop, _))) => {
-                let who = exop
-                    .val
-                    .as_ref()
-                    .map(|v| String::from_utf8_lossy(v).to_string())
-                    .unwrap_or_default();
-                if who.is_empty() {
-                    error!(
-                        "Certificate not mapped by {} Active Directory (empty whoami). \
-                         Check the certificate SID and the DC enforcement mode (KB5014754).\n",
-                        domain.to_uppercase().bold().red()
-                    );
-                    process::exit(0x0100);
-                }
-                info!(
-                    "Connected to {} Active Directory via certificate as {}!",
-                    domain.to_uppercase().bold().green(),
-                    who.bold().green()
-                );
-                info!("Starting data collection...");
-            }
-            Ok(Err(err)) => {
-                error!(
-                    "Certificate authentication failed on {} Active Directory. Reason: {err}\n",
-                    domain.to_uppercase().bold().red()
-                );
-                process::exit(0x0100);
-            }
-            Err(err) => {
-                error!(
-                    "Certificate authentication request failed on {} Active Directory. Reason: {err}\n",
-                    domain.to_uppercase().bold().red()
-                );
-                process::exit(0x0100);
-            }
+        let who = ldap
+            .extended(WhoAmI)
+            .await
+            .map(|r| r.success())
+            .map_err(|e| format!("certificate whoami request failed: {e}"))?
+            .map_err(|e| format!("certificate whoami failed: {e}"))?
+            .0
+            .val
+            .as_ref()
+            .map(|v| String::from_utf8_lossy(v).to_string())
+            .unwrap_or_default();
+        if who.is_empty() {
+            return Err(format!(
+                "certificate not mapped by {} (empty whoami); check the cert SID and DC enforcement (KB5014754)",
+                domain.to_uppercase()
+            )
+            .into());
         }
+        info!(
+            "Connected to {} Active Directory via certificate as {}!",
+            domain.to_uppercase().bold().green(),
+            who.bold().green()
+        );
     } else if let Some(ref ntlm_password) = ldap_args.s_ntlm_password {
-        debug!("Trying to connect with sasl_ntlm_bind() function (NTLM pass-the-hash)");
-        let res = ldap
-            .sasl_ntlm_bind(&ldap_args.s_username, ntlm_password)
+        debug!("NTLM pass-the-hash (sasl_ntlm_bind)");
+        ldap.sasl_ntlm_bind(&ldap_args.s_username, ntlm_password)
             .await?
-            .success();
-        match res {
-            Ok(_res) => {
-                info!(
-                    "Connected to {} Active Directory via NTLM!",
-                    domain.to_uppercase().bold().green()
-                );
-                info!("Starting data collection...");
-            }
-            Err(err) => {
-                error!(
-                    "Failed to authenticate to {} Active Directory via NTLM. Reason: {err}\n",
-                    domain.to_uppercase().bold().red()
-                );
-                process::exit(0x0100);
-            }
-        }
-    } else if !kerberos {
-        debug!("Trying to connect with simple_bind() function (username:password)");
-        let res = ldap
-            .simple_bind(&ldap_args.s_username, &ldap_args.s_password)
+            .success()
+            .map_err(|e| format!("NTLM authentication to {} failed: {e}", domain.to_uppercase()))?;
+        info!("Connected to {} Active Directory via NTLM!", domain.to_uppercase().bold().green());
+    } else if !options.kerberos {
+        debug!("Simple bind (username:password)");
+        ldap.simple_bind(&ldap_args.s_username, &ldap_args.s_password)
             .await?
-            .success();
-        match res {
-            Ok(_res) => {
-                info!(
-                    "Connected to {} Active Directory!",
-                    domain.to_uppercase().bold().green()
-                );
-                info!("Starting data collection...");
-            }
-            Err(err) => {
-                error!(
-                    "Failed to authenticate to {} Active Directory. Reason: {err}\n",
-                    domain.to_uppercase().bold().red()
-                );
-                process::exit(0x0100);
-            }
-        }
+            .success()
+            .map_err(|e| format!("authentication to {} failed: {e}", domain.to_uppercase()))?;
+        info!("Connected to {} Active Directory!", domain.to_uppercase().bold().green());
     } else {
-        debug!("Trying to connect with sasl_gssapi_bind() function (kerberos session)");
-        if let Some(fqdn) = ldapfqdn.filter(|f| !f.is_empty()) {
-            #[cfg(not(feature = "nogssapi"))]
-            gssapi_connection(&mut ldap, fqdn, &domain).await?;
-            #[cfg(feature = "nogssapi")]
-            {
-                error!("Kerberos auth and GSSAPI not compatible with current os!");
-                process::exit(0x0100);
-            }
-        } else {
-            error!(
-                "Need Domain Controller FQDN to bind GSSAPI connection. Please use '{}'\n",
-                "-f DC01.DOMAIN.LAB".bold()
+        debug!("Kerberos (sasl_gssapi_bind)");
+        let fqdn = options
+            .ldapfqdn
+            .as_deref()
+            .filter(|f| !f.is_empty())
+            .ok_or("Kerberos requires the Domain Controller FQDN (set options.ldapfqdn, e.g. DC01.DOMAIN.LOCAL)")?;
+        #[cfg(not(feature = "nogssapi"))]
+        {
+            gssapi_connection(&mut ldap, fqdn, domain).await?;
+        }
+        #[cfg(feature = "nogssapi")]
+        {
+            let _ = fqdn;
+            return Err("Kerberos/GSSAPI is not available in this build (nogssapi feature)".into());
+        }
+    }
+
+    Ok(ldap)
+}
+
+/// Collect every namingContext of the DC into `storage`, returning the number
+/// of objects collected. Walks each context with the SD-flags and show-deleted
+/// controls and streams entries into `storage`. Returns `Err` on failure (no
+/// `process::exit`) and does not unbind/drop the session — the caller owns it.
+pub(crate) async fn collect_from_ldap_into<S: Storage<LdapSearchEntry>>(
+    ldap: &mut ldap3::Ldap,
+    ldapfilter: &str,
+    storage: &mut S,
+) -> Result<usize, Box<dyn Error>> {
+    let mut total = 0usize;
+
+    let res = get_all_naming_contexts(ldap).await?;
+    trace!("naming_contexts: {:?}", &res);
+
+    if !res.iter().any(|s| s.contains("Configuration")) {
+        return Err("no Configuration namingContext found (is the target a Domain Controller?)".into());
+    }
+
+    for cn in &res {
+        // Control 1: LDAP_SERVER_SD_FLAGS_OID to get nTSecurityDescriptor.
+        let sd_flags = RawControl {
+            ctype: String::from("1.2.840.113556.1.4.801"),
+            crit: true,
+            val: Some(vec![48, 3, 2, 1, 5]), // SEQUENCE { INTEGER 5 }
+        };
+        // Control 2: LDAP_SERVER_SHOW_DELETED_OID.
+        let show_deleted = RawControl {
+            ctype: String::from("1.2.840.113556.1.4.417"),
+            crit: false,
+            val: None,
+        };
+        ldap.with_controls(vec![sd_flags, show_deleted]);
+
+        info!("Ldap filter : {}", ldapfilter.bold().green());
+
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(999)),
+        ];
+
+        let mut search = ldap
+            .streaming_search_with(
+                adapters,
+                cn,
+                Scope::Subtree,
+                ldapfilter,
+                vec!["*", "nTSecurityDescriptor"],
+            )
+            .await?;
+
+        let pb = ProgressBar::new(1);
+        let mut count = 0;
+        while let Some(entry) = search.next().await? {
+            let entry = SearchEntry::construct(entry);
+            total += 1;
+            count += 1;
+            progress_bar(
+                pb.to_owned(),
+                "LDAP objects retrieved".to_string(),
+                count,
+                "#".to_string(),
             );
-            process::exit(0x0100);
+            storage.add(entry.into())?;
         }
-    }
+        pb.finish_and_clear();
 
-    // // Prepare LDAP result vector
-    let mut total = 0; // for progress bar
-
-    // Request all namingContexts for current DC
-    let res = match get_all_naming_contexts(&mut ldap).await {
-        Ok(res) => {
-            trace!("naming_contexts: {:?}", &res);
-            res
+        match search.finish().await.success() {
+            Ok(_) => info!("All data collected for NamingContext {}", &cn.bold()),
+            Err(err) => error!("No data collected on {}! Reason: {err}", &cn.bold().red()),
         }
-        Err(err) => {
-            error!("No namingContexts found! Reason: {err}\n");
-            process::exit(0x0100);
-        }
-    };
-
-    // namingContexts: DC=domain,DC=local
-    // namingContexts: CN=Configuration,DC=domain,DC=local (needed for AD CS datas)
-    if res.iter().any(|s| s.contains("Configuration")) {
-        for cn in &res {
-            //  Control 1: Set control LDAP_SERVER_SD_FLAGS_OID to get nTSecurityDescriptor
-            // https://ldapwiki.com/wiki/LDAP_SERVER_SD_FLAGS_OID
-            let sd_flags = RawControl {
-                ctype: String::from("1.2.840.113556.1.4.801"),
-                crit: true,
-                val: Some(vec![48, 3, 2, 1, 5]),    // SEQUENCE { INTEGER 5 }
-            };
-
-            // Control 2: LDAP_SERVER_SHOW_DELETED_OID (deleted objects)
-            // https://ldapwiki.com/wiki/IsDeleted 
-            let show_deleted = RawControl {
-                ctype: String::from("1.2.840.113556.1.4.417"),
-                crit: false,    // false ignored if not supported
-                val: None,
-            };
-
-            let controls = vec![sd_flags, show_deleted];
-            ldap.with_controls(controls.to_owned());
-
-            info!("Ldap filter : {}", ldapfilter.bold().green());
-            let _s_filter = ldapfilter;
-
-            // Every 999 max value in ldap response (err 4 ldap)
-            let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-                Box::new(EntriesOnly::new()),
-                Box::new(PagedResults::new(999)),
-            ];
-
-            // Streaming search with adaptaters and filters
-            let mut search = ldap
-                .streaming_search_with(
-                    adapters, // Adapter which fetches Search results with a Paged Results control.
-                    cn,
-                    Scope::Subtree,
-                    _s_filter,
-                    vec!["*", "nTSecurityDescriptor"],
-                    // Without the presence of this control, the server returns an SD only when the SD attribute name is explicitly mentioned in the requested attribute list.
-                    // https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/932a7a8d-8c93-4448-8093-c79b7d9ba499
-                )
-                .await?;
-
-            // Wait and get next values
-            let pb = ProgressBar::new(1);
-            let mut count = 0;
-            while let Some(entry) = search.next().await? {
-                let entry = SearchEntry::construct(entry);
-                //trace!("{:?}", &entry);
-                total += 1;
-                // Manage progress bar
-                count += 1;
-                progress_bar(
-                    pb.to_owned(),
-                    "LDAP objects retrieved".to_string(),
-                    count,
-                    "#".to_string(),
-                );
-
-                storage.add(entry.into())?;
-            }
-            pb.finish_and_clear();
-
-            let res = search.finish().await.success();
-            match res {
-                Ok(_res) => info!("All data collected for NamingContext {}", &cn.bold()),
-                Err(err) => {
-                    error!("No data collected on {}! Reason: {err}", &cn.bold().red());
-                }
-            }
-        }
-
-        ldap.unbind().await?;
-    }
-
-    // drop ldap before final flush,
-    // otherwise it will warn about an i/o error
-    // "LDAP connection error: I/O error: Connection reset by peer (os error 54)"
-    drop(ldap);
-    if total == 0 {
-        error!("No LDAP objects found! Exiting...");
-        process::exit(0x0100);
     }
 
     storage.flush()?;
-
-    // Return the vector with the result
     Ok(total)
 }
 
@@ -345,33 +248,22 @@ fn ldap_constructor(
     password: Option<&str>,
     hashes: Option<&str>,
     kerberos: bool,
-    // When true, no username/password is needed (identity comes from the cert)
     use_cert: bool,
 ) -> Result<LdapArgs, Box<dyn Error>> {
-    // Prepare ldap url
     let s_url = prepare_ldap_url(ldaps, ip, port, domain);
-
-    // Prepare full DC chain
     let s_dc = prepare_ldap_dc(domain);
-
     let use_ntlm = hashes.is_some();
 
-    // Username prompt (skipped for certificate auth: identity comes from the cert)
+    // Username prompt (skipped for Kerberos and certificate auth)
     let mut s = String::new();
     let mut _s_username: String;
     if username.is_none() && !kerberos && !use_cert {
         print!("Username: ");
         io::stdout().flush()?;
-        stdin()
-            .read_line(&mut s)
-            .expect("Did not enter a correct username");
+        stdin().read_line(&mut s).expect("Did not enter a correct username");
         io::stdout().flush()?;
-        if let Some('\n') = s.chars().next_back() {
-            s.pop();
-        }
-        if let Some('\r') = s.chars().next_back() {
-            s.pop();
-        }
+        if let Some('\n') = s.chars().next_back() { s.pop(); }
+        if let Some('\r') = s.chars().next_back() { s.pop(); }
         _s_username = s.to_owned();
     } else {
         _s_username = username.unwrap_or("not set").to_owned();
@@ -400,14 +292,12 @@ fn ldap_constructor(
     let s_ntlm_password = match hashes {
         Some(hash) => {
             let clean = hash.trim();
-            // Accept [NTHASH, :NTHASH, LMHASH:NTHASH]
             let nt = match clean.split_once(':') {
                 Some((_lm, nt)) => nt,
                 None => clean,
             };
             if nt.len() != 32 || !nt.chars().all(|c| c.is_ascii_hexdigit()) {
-                error!("Invalid NT hash: must be exactly 32 hex characters (e.g. aad3b435b51404eeaad3b435b51404ee)");
-                process::exit(0x0100);
+                return Err("Invalid NT hash: must be exactly 32 hex characters (e.g. aad3b435b51404eeaad3b435b51404ee)".into());
             }
             Some(nt_hash_to_ntlm_password(nt))
         }
@@ -424,18 +314,9 @@ fn ldap_constructor(
     } else {
         _s_password = password.unwrap_or("not set").to_owned();
     }
-    
-    // Print infos if verbose mod is set
-    debug!("IP: {}", match ip {
-        Some(ip) => ip,
-        None => "not set"
-    });
-    debug!("PORT: {}", match port {
-        Some(p) => {
-            p.to_string()
-        },
-        None => "not set".to_owned()
-    });
+
+    debug!("IP: {}", ip.unwrap_or("not set"));
+    debug!("PORT: {}", match port { Some(p) => p.to_string(), None => "not set".to_owned() });
     debug!("FQDN: {}", ldapfqdn.unwrap_or("not set"));
     debug!("Url: {}", s_url);
     debug!("Domain: {}", domain);
@@ -455,11 +336,7 @@ fn ldap_constructor(
         s_url: s_url.to_string(),
         _s_dc: s_dc,
         _s_email: s_email.to_string().to_lowercase(),
-        s_username: if use_ntlm {
-            _s_username.to_string()
-        } else {
-            s_email.to_string().to_lowercase()
-        },
+        s_username: if use_ntlm { _s_username.to_string() } else { s_email.to_string().to_lowercase() },
         s_password: _s_password.to_string(),
         s_ntlm_password,
     })
@@ -470,70 +347,41 @@ fn ldap_constructor(
 fn nt_hash_to_ntlm_password(hex_hash: &str) -> String {
     let upper = hex_hash.to_uppercase();
     let bytes = upper.as_bytes();
-
     let mut password = String::new();
-
     for pair in bytes.chunks(2) {
         let low_byte = pair[0] as u32;
         let high_byte = if pair.len() > 1 { pair[1] as u32 } else { 0 };
         let code_point = (high_byte << 8) | low_byte;
         password.push(char::from_u32(code_point).unwrap_or('\0'));
     }
-
-    // Pad to exceed the 512-byte SSPI_CREDENTIALS_HASH_LENGTH_OFFSET
     for _ in 0..256 {
         password.push('\0');
     }
-
     password
 }
 
 /// Function to prepare LDAP url.
-fn prepare_ldap_url(
-    ldaps: bool,
-    ip: Option<&str>,
-    port: Option<u16>,
-    domain: &str
-) -> String {
-    let protocol = if ldaps || port.unwrap_or(0) == 636 {
-        "ldaps"
-    } else {
-        "ldap"
-    };
-
-    let target = match ip {
-        Some(ip) => ip,
-        None => domain,
-    };
-
+fn prepare_ldap_url(ldaps: bool, ip: Option<&str>, port: Option<u16>, domain: &str) -> String {
+    let protocol = if ldaps || port.unwrap_or(0) == 636 { "ldaps" } else { "ldap" };
+    let target = match ip { Some(ip) => ip, None => domain };
     match port {
-        Some(port) => {
-            format!("{protocol}://{target}:{port}")
-        }
-        None => {
-            format!("{protocol}://{target}")
-        }
+        Some(port) => format!("{protocol}://{target}:{port}"),
+        None => format!("{protocol}://{target}"),
     }
 }
 
 /// Function to prepare LDAP DC from DOMAIN.LOCAL
 pub fn prepare_ldap_dc(domain: &str) -> Vec<String> {
-
     let mut dc: String = "".to_owned();
     let mut naming_context: Vec<String> = Vec::new();
-
-    // Format DC
     if !domain.contains(".") {
         dc.push_str("DC=");
         dc.push_str(domain);
         naming_context.push(dc[..].to_string());
-    }
-    else {
+    } else {
         naming_context.push(domain_to_dc(domain));
     }
-
-    // For ADCS values
-    naming_context.push(format!("{}{}", "CN=Configuration,", &dc[..])); 
+    naming_context.push(format!("{}{}", "CN=Configuration,", &dc[..]));
     naming_context
 }
 
@@ -544,114 +392,81 @@ async fn gssapi_connection(
     ldapfqdn: &str,
     domain: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let res = ldap.sasl_gssapi_bind(ldapfqdn).await?.success();
-    match res {
-        Ok(_res) => {
-            info!("Connected to {} Active Directory!", domain.to_uppercase().bold().green());
-            info!("Starting data collection...");
-        }
-        Err(err) => {
-            error!("Failed to authenticate to {} Active Directory. Reason: {err}\n", domain.to_uppercase().bold().red());
-            process::exit(0x0100);
-        }
-    }
+    ldap.sasl_gssapi_bind(ldapfqdn)
+        .await?
+        .success()
+        .map_err(|e| format!("Kerberos authentication to {} failed: {e}", domain.to_uppercase()))?;
+    info!("Connected to {} Active Directory!", domain.to_uppercase().bold().green());
     Ok(())
 }
 
 /// Get all namingContext for DC
-pub async fn get_all_naming_contexts(
-    ldap: &mut ldap3::Ldap
-) -> Result<Vec<String>, Box<dyn Error>> {
-    // Every 999 max value in ldap response (err 4 ldap)
+pub async fn get_all_naming_contexts(ldap: &mut ldap3::Ldap) -> Result<Vec<String>, Box<dyn Error>> {
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
         Box::new(PagedResults::new(999)),
     ];
-
-    // First LDAP request to get all namingContext
     let mut search = ldap.streaming_search_with(
         adapters,
-        "", 
+        "",
         Scope::Base,
         "(objectClass=*)",
         vec!["namingContexts"],
     ).await?;
 
-    // Prepare LDAP result vector
     let mut rs: Vec<SearchEntry> = Vec::new();
     while let Some(entry) = search.next().await? {
-        let entry = SearchEntry::construct(entry);
-        rs.push(entry);
+        rs.push(SearchEntry::construct(entry));
     }
     let res = search.finish().await.success();
 
-    // Prepare vector for all namingContexts result
     let mut naming_contexts: Vec<String> = Vec::new();
     match res {
         Ok(_res) => {
             debug!("All namingContexts collected!");
             for result in rs {
-                let result_attrs: HashMap<String, Vec<String>> = result.attrs;
-
-                for (_key, value) in &result_attrs {
+                for (_key, value) in &result.attrs {
                     for naming_context in value {
-                        debug!("namingContext found: {}",&naming_context.bold().green());
+                        debug!("namingContext found: {}", &naming_context.bold().green());
                         naming_contexts.push(naming_context.to_string());
                     }
                 }
             }
-            
-            // Put CN=Schema first so schema_guid_map is complete before ACEs are parsed
             naming_contexts.sort_by_key(|cn| {
                 if cn.contains("CN=Schema") { 0 }
                 else if cn.to_lowercase().starts_with("dc=") { 1 }
                 else if cn.contains("CN=Configuration") { 2 }
                 else { 3 }
             });
-
-            // Trace sorted naming contexts order
             for (i, nc) in naming_contexts.iter().enumerate() {
                 trace!("NamingContext order [{}]: {}", i, nc);
             }
-
-            return Ok(naming_contexts)
+            return Ok(naming_contexts);
         }
         Err(err) => {
             error!("No namingContexts found! Reason: {err}");
         }
     }
-    // Empty result if no namingContexts found
     Ok(Vec::new())
 }
 
 // New type to implement Serialize and Deserialize for SearchEntry
 #[derive(Debug, Clone, bincode::Encode, bincode::Decode)]
 pub struct LdapSearchEntry {
-    /// Entry DN.
     pub dn: String,
-    /// Attributes.
     pub attrs: HashMap<String, Vec<String>>,
-    /// Binary-valued attributes.
     pub bin_attrs: HashMap<String, Vec<Vec<u8>>>,
 }
 
 impl From<SearchEntry> for LdapSearchEntry {
     fn from(entry: SearchEntry) -> Self {
-        LdapSearchEntry {
-            dn: entry.dn,
-            attrs: entry.attrs,
-            bin_attrs: entry.bin_attrs,
-        }
+        LdapSearchEntry { dn: entry.dn, attrs: entry.attrs, bin_attrs: entry.bin_attrs }
     }
 }
 
 impl From<LdapSearchEntry> for SearchEntry {
     fn from(entry: LdapSearchEntry) -> Self {
-        SearchEntry {
-            dn: entry.dn,
-            attrs: entry.attrs,
-            bin_attrs: entry.bin_attrs,
-        }
+        SearchEntry { dn: entry.dn, attrs: entry.attrs, bin_attrs: entry.bin_attrs }
     }
 }
 
@@ -663,32 +478,18 @@ mod tests {
     fn nt_hash_encoding_roundtrip() {
         let hash = "aad3b435b51404eeaad3b435b51404ee";
         let password = nt_hash_to_ntlm_password(hash);
-
-        let utf16_bytes: Vec<u8> = password
-            .encode_utf16()
-            .flat_map(|u| u.to_le_bytes())
-            .collect();
-
+        let utf16_bytes: Vec<u8> = password.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         assert!(utf16_bytes.len() > 512);
-
         let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
         assert_eq!(hash_portion.len(), 32);
-
-        let expected_hex = hash.to_uppercase();
-        let expected_bytes = expected_hex.as_bytes();
-        assert_eq!(hash_portion, expected_bytes);
+        assert_eq!(hash_portion, hash.to_uppercase().as_bytes());
     }
 
     #[test]
     fn nt_hash_encoding_all_zeros() {
         let hash = "00000000000000000000000000000000";
         let password = nt_hash_to_ntlm_password(hash);
-
-        let utf16_bytes: Vec<u8> = password
-            .encode_utf16()
-            .flat_map(|u| u.to_le_bytes())
-            .collect();
-
+        let utf16_bytes: Vec<u8> = password.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         assert!(utf16_bytes.len() > 512);
         let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
         assert_eq!(hash_portion, b"00000000000000000000000000000000");
@@ -698,12 +499,7 @@ mod tests {
     fn nt_hash_encoding_all_f() {
         let hash = "ffffffffffffffffffffffffffffffff";
         let password = nt_hash_to_ntlm_password(hash);
-
-        let utf16_bytes: Vec<u8> = password
-            .encode_utf16()
-            .flat_map(|u| u.to_le_bytes())
-            .collect();
-
+        let utf16_bytes: Vec<u8> = password.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         assert!(utf16_bytes.len() > 512);
         let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
         assert_eq!(hash_portion, b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
