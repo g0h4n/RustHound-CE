@@ -34,14 +34,22 @@ const MV_AV_CHANNEL_BINDINGS: u16 = 0x000A;
 
 /// Anonymous NTLM Type 1 Negotiate token.
 ///
-/// Flags encoded (little-endian `0xa2088207`):
-///  NTLMSSP_NEGOTIATE_UNICODE            (0x00000001)
-///  NTLMSSP_NEGOTIATE_OEM                (0x00000002)
-///  NTLMSSP_REQUEST_TARGET               (0x00000004)
-///  NTLMSSP_NEGOTIATE_NTLM               (0x00000200)
+/// Flags encoded (little-endian `0xa0088207`):
+///  NTLMSSP_NEGOTIATE_UNICODE                  (0x00000001)
+///  NTLMSSP_NEGOTIATE_OEM                      (0x00000002)
+///  NTLMSSP_REQUEST_TARGET                     (0x00000004)
+///  NTLMSSP_NEGOTIATE_NTLM                     (0x00000200)
+///  NTLMSSP_NEGOTIATE_ALWAYS_SIGN              (0x00008000)
 ///  NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY (0x00080000)
-///  NTLMSSP_NEGOTIATE_128                (0x20000000)
-///  NTLMSSP_NEGOTIATE_56                 (0x80000000)
+///  NTLMSSP_NEGOTIATE_128                      (0x20000000)
+///  NTLMSSP_NEGOTIATE_56                       (0x80000000)
+///
+/// NEGOTIATE_VERSION (0x02000000) MUST NOT be set here: MS-NLMP §2.2.1.1
+/// requires an 8-byte Version block when that flag is present, and this
+/// minimal 32-byte token omits it. IIS/HTTP.sys rejects a Type 1 that claims
+/// NEGOTIATE_VERSION without a Version block: it never returns a Type 2
+/// challenge, so the EPA probe cannot see MsvAvChannelBindings and the CA
+/// is silently reported as not ESC8-vulnerable.
 ///
 /// Domain and Workstation fields are empty; no version block.
 const NTLM_NEGOTIATE: &[u8] = &[
@@ -49,12 +57,13 @@ const NTLM_NEGOTIATE: &[u8] = &[
     0x4e, 0x54, 0x4c, 0x4d, 0x53, 0x53, 0x50, 0x00,
     // MessageType = 1
     0x01, 0x00, 0x00, 0x00,
-    // NegotiateFlags (LE 0xa2088207)
-    0x07, 0x82, 0x08, 0xa2,
-    // DomainNameFields: Len=0, MaxLen=0, Offset=32
-    0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00,
-    // WorkstationFields: Len=0, MaxLen=0, Offset=32
-    0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00,
+    // NegotiateFlags LE 0xa0088207 (no NEGOTIATE_VERSION 0x02000000: without a Version block
+    // present, IIS rejects the Type 1 as malformed and never returns a Type 2 challenge).
+    0x07, 0x82, 0x08, 0xa0,
+    // DomainNameFields: empty
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // WorkstationFields: empty
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
 // Status string values matching BloodHound CE expected format.
