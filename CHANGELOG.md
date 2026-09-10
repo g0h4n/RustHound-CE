@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.13 - 2026-09-10
+
+Expose RustHound-CE as a reusable Rust library. `ldap_search` is split into two composable entry points: `ldap_auth(options)` authenticates (simple bind, pass-the-hash, Kerberos, or certificate) and returns a ready `ldap3::Ldap` session, and `run_collection(ldap, options)` runs the full workflow (collect, parse, modules, JSON/zip) over that session and returns the output path. Both return `Err` instead of calling `process::exit`, and `run_collection` never unbinds the session, so a caller can bring its own authenticated connection. The CLI behaviour is unchanged. See [INTEGRATION.md](INTEGRATION.md).
+
 ## 2.5.12 - 2026-09-10
 
 ### Added

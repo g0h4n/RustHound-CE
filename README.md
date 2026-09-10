@@ -16,6 +16,7 @@ RustHound was created during my years as a pentester at Armature Technologies, r
 - [CHANGELOG.md](CHANGELOG.md) - A record of all significant version changes
 - [ROADMAP.md](ROADMAP.md) - List of planned evolutions
 - [CONTRIBUTING.md](CONTRIBUTING.md) - How to contribute to the project
+- [INTEGRATION.md](INTEGRATION.md) - How to use RustHound-CE as a library in your Rust project?
 - [LINKS.md](LINKS.md) - Useful resources
 
 # Quick usage
