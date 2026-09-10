@@ -66,9 +66,9 @@ fn is_gpo_guid(name: &str) -> bool {
 
 /// Build the SMB target and credentials, then collect GPO directives off SYSVOL.
 pub async fn collect_sysvol_targets(common_args: &Options, scope: &ComputerGpoScope) -> anyhow::Result<Vec<SysvolGpo>> {
-    use crate::transport::smb::{nt_hash_from_str, SmbAuth};
+    use crate::transport::smb::{nt_hash_from_str, smb_user, SmbAuth};
 
-    let user = common_args.username.clone().unwrap_or_default();
+    let user = smb_user(common_args.username.as_deref().unwrap_or_default());
     let password = common_args.password.clone().unwrap_or_default();
     let nt = common_args.hashes.as_deref().and_then(nt_hash_from_str);
 

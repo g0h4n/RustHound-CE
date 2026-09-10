@@ -6,7 +6,7 @@ pub mod sessions;
 
 use std::error::Error;
 
-use rayon::prelude::*;
+use futures::future;
 
 use crate::api::ADResults;
 use crate::args::{CollectionMethod, Options};
@@ -38,7 +38,12 @@ pub async fn run_modules(common_args: &Options, ad: &mut ADResults) -> Result<()
 
     // [MODULE - ESC8] Web enrollment probe on all enterprise CAs.
     // Skipped in DCOnly mode (no direct machine connections allowed).
-    // Uses rayon to probe all CAs in parallel (each probe has a 5 s timeout).
+    // Each probe's blocking reqwest client runs via tokio::task::spawn_blocking
+    // on Tokio's dedicated blocking thread pool. Building/dropping a
+    // reqwest::blocking::Client (which owns its own nested Tokio runtime)
+    // panics on drop if done on a thread already inside an async context; the
+    // previous rayon par_iter_mut could run the closure on the calling Tokio
+    // worker thread itself (e.g. with a single CA), which was the crash.
     if !matches!(common_args.collection_method, CollectionMethod::DCOnly)
         && !matches!(common_args.collection_method, CollectionMethod::LdapOnly)
         && !ad.enterprisecas.is_empty()
@@ -47,10 +52,25 @@ pub async fn run_modules(common_args: &Options, ad: &mut ADResults) -> Result<()
             "Starting ESC8 web enrollment probe on {} CA(s)...",
             ad.enterprisecas.len()
         );
-        ad.enterprisecas.par_iter_mut().for_each(|ca| {
-            let esc8 = probe_enterpriseca_esc8(ca.dns_host());
-            ca.apply_esc8(esc8.http_enrollment_endpoints);
-        });
+        let hosts: Vec<String> = ad
+            .enterprisecas
+            .iter()
+            .map(|ca| ca.dns_host().to_string())
+            .collect();
+        let probes = future::join_all(hosts.into_iter().map(|host| {
+            tokio::task::spawn_blocking(move || probe_enterpriseca_esc8(&host))
+        }))
+        .await;
+        for (ca, probe) in ad.enterprisecas.iter_mut().zip(probes) {
+            match probe {
+                Ok(esc8) => ca.apply_esc8(esc8.http_enrollment_endpoints),
+                Err(join_err) => log::warn!(
+                    "[adcs] ESC8 probe task for {} did not complete ({}), skipping",
+                    ca.dns_host(),
+                    join_err
+                ),
+            }
+        }
     }
 
     // [MODULE - GPO SYSVOL] read GptTmpl.inf / Groups.xml off the DC SYSVOL share.
