@@ -25,6 +25,11 @@ pub struct Options {
     pub fqdn_resolver: bool,
     pub hashes: Option<String>,
     pub kerberos: bool,
+    // Certificate authentication (Pass-the-Certificate / Schannel)
+    pub pfx: Option<String>,
+    pub pfx_pass: Option<String>,
+    pub crt: Option<String>,
+    pub key: Option<String>,
     pub zip: bool,
     pub verbose: log::LevelFilter,
     pub ldap_filter: String,
@@ -32,6 +37,14 @@ pub struct Options {
     pub cache: bool,
     pub cache_buffer_size: usize,
     pub resume: bool,
+}
+
+impl Options {
+    /// True when authenticating with a client certificate (no SMB credentials
+    /// are available, so SMB-based modules must be skipped).
+    pub fn uses_cert(&self) -> bool {
+        self.pfx.is_some() || self.crt.is_some()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -116,7 +129,7 @@ fn cli() -> Command {
     .arg(Arg::new("ldapport")
         .short('P')
         .long("ldapport")
-        .help("LDAP port [default: 389]")
+        .help("LDAP port [default: 389, or 636 with --ldaps]")
         .required(false)
         .value_parser(value_parser!(String))
     )
@@ -131,6 +144,31 @@ fn cli() -> Command {
         .short('o')
         .long("output")
         .help("Output directory where you would like to save JSON files [default: ./]")
+        .required(false)
+        .value_parser(value_parser!(String))
+    )
+    .next_help_heading("CERTIFICATE AUTHENTICATION")
+    .arg(Arg::new("pfx")
+        .long("pfx")
+        .help("PFX/PKCS#12 client certificate for certificate authentication (Pass-the-Certificate). Uses StartTLS by default, or LDAPS with --ldaps")
+        .required(false)
+        .value_parser(value_parser!(String))
+    )
+    .arg(Arg::new("pfx-pass")
+        .long("pfx-pass")
+        .help("Password protecting the PFX file (optional)")
+        .required(false)
+        .value_parser(value_parser!(String))
+    )
+    .arg(Arg::new("crt")
+        .long("crt")
+        .help("PEM client certificate for certificate authentication (use with --key)")
+        .required(false)
+        .value_parser(value_parser!(String))
+    )
+    .arg(Arg::new("key")
+        .long("key")
+        .help("PEM private key for certificate authentication (use with --crt)")
         .required(false)
         .value_parser(value_parser!(String))
     )
@@ -265,6 +303,13 @@ pub fn extract_args() -> Options {
         .get_one::<bool>("kerberos")
         .map(|s| s.to_owned())
         .unwrap_or(false);
+
+    // Certificate authentication paths
+    let pfx = matches.get_one::<String>("pfx").cloned();
+    let pfx_pass = matches.get_one::<String>("pfx-pass").cloned();
+    let crt = matches.get_one::<String>("crt").cloned();
+    let key = matches.get_one::<String>("key").cloned();
+
     let v = match matches.get_count("v") {
         0 => log::LevelFilter::Info,
         1 => log::LevelFilter::Debug,
@@ -307,6 +352,10 @@ pub fn extract_args() -> Options {
         dns_tcp,
         fqdn_resolver,
         kerberos,
+        pfx,
+        pfx_pass,
+        crt,
+        key,
         zip: z,
         verbose: v,
         ldap_filter: ldap_filter.to_string(),
@@ -370,6 +419,10 @@ pub fn auto_args() -> Options {
         fqdn_resolver: false,
         hashes: None,
         kerberos: true,
+        pfx: None,
+        pfx_pass: None,
+        crt: None,
+        key: None,
         zip: true,
         verbose: log::LevelFilter::Info,
         ldap_filter: "(objectClass=*)".to_string(),

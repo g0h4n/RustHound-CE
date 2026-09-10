@@ -88,6 +88,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     common_args.password.as_deref(),
                     common_args.hashes.as_deref(),
                     common_args.kerberos,
+                    common_args.pfx.as_deref(),
+                    common_args.pfx_pass.as_deref(),
+                    common_args.crt.as_deref(),
+                    common_args.key.as_deref(),
                     &common_args.ldap_filter,
                     &mut cache_writer,
                 )
@@ -112,6 +116,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     common_args.password.as_deref(),
                     common_args.hashes.as_deref(),
                     common_args.kerberos,
+                    common_args.pfx.as_deref(),
+                    common_args.pfx_pass.as_deref(),
+                    common_args.crt.as_deref(),
+                    common_args.key.as_deref(),
                     &common_args.ldap_filter,
                     &mut ldap_results,
                 )

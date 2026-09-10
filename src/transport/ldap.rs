@@ -18,6 +18,7 @@ use crate::utils::format::domain_to_dc;
 use colored::Colorize;
 use indicatif::ProgressBar;
 use ldap3::adapters::{Adapter, EntriesOnly};
+use ldap3::exop::WhoAmI;
 use ldap3::{adapters::PagedResults, controls::RawControl, LdapConnAsync, LdapConnSettings};
 use ldap3::{Scope, SearchEntry};
 use log::{info, debug, error, trace};
@@ -38,22 +39,121 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     password: Option<&str>,
     hashes: Option<&str>,
     kerberos: bool,
+    // Certificate authentication (Pass-the-Certificate / Schannel)
+    pfx: Option<&str>,
+    pfx_pass: Option<&str>,
+    crt: Option<&str>,
+    key: Option<&str>,
     ldapfilter: &str,
     storage: &mut S,
 ) -> Result<usize, Box<dyn Error>> {
-    // Construct LDAP args
+    // Certificate authentication is enabled when a PFX or a CRT+KEY is provided.
+    let use_cert = pfx.is_some() || crt.is_some();
+
+    // Certificate auth transport:
+    //   - with --ldaps : LDAPS 636, implicit Schannel mapping, no bind.
+    //   - without      : LDAP 389 + StartTLS, SASL EXTERNAL bind (default).
+    // So StartTLS is used for cert auth unless --ldaps is explicitly requested.
+    let starttls = use_cert && !ldaps;
+
+    // Non-certificate modes keep the user-provided `ldaps` value unchanged;
+    // cert over LDAPS forces the ldaps scheme, cert over StartTLS keeps 389.
+    let effective_ldaps = if use_cert { !starttls } else { ldaps };
+
+    // Certificate transport needs a port consistent with the scheme, otherwise
+    // `prepare_ldap_url` (which also treats port 636 as LDAPS) would build an
+    // ldaps:// URL while StartTLS is enabled, or vice-versa. When the user does
+    // not pass an explicit port, pick the default for the chosen cert transport:
+    //   StartTLS -> 389, LDAPS -> 636. A user-supplied port is respected.
+    let effective_port = if use_cert {
+        port.or(Some(if starttls { 389 } else { 636 }))
+    } else {
+        port
+    };
+
+    // Construct LDAP args (URL scheme follows effective_ldaps)
     let ldap_args = ldap_constructor(
-        ldaps, ip, port, domain, ldapfqdn, username, password, hashes, kerberos,
+        effective_ldaps, ip, effective_port, domain, ldapfqdn, username, password, hashes, kerberos, use_cert,
     )?;
 
-    // LDAP connection
-    let consettings = LdapConnSettings::new()
+    // LDAP connection settings
+    let mut consettings = LdapConnSettings::new()
         .set_conn_timeout(std::time::Duration::from_secs(10))
         .set_no_tls_verify(true);
+
+    // Attach the client certificate config when doing certificate auth.
+    if use_cert {
+        let config = crate::transport::cert::build_client_config(pfx, pfx_pass, crt, key)?;
+        consettings = consettings.set_config(config);
+        if starttls {
+            consettings = consettings.set_starttls(true);
+        }
+    }
+
     let (conn, mut ldap) = LdapConnAsync::with_settings(consettings, &ldap_args.s_url).await?;
     ldap3::drive!(conn);
 
-    if let Some(ref ntlm_password) = ldap_args.s_ntlm_password {
+    if use_cert {
+        // Pass-the-Certificate. AD maps the client certificate to an account at
+        // the TLS layer (Schannel). Over LDAPS the mapping is implicit (no bind);
+        // over StartTLS we authenticate with SASL EXTERNAL. In both cases the
+        // mapped identity is confirmed with a whoami before collection.
+        if starttls {
+            debug!("Trying certificate authentication (StartTLS + SASL EXTERNAL)");
+            match ldap.sasl_external_bind().await.and_then(|r| r.success()) {
+                Ok(_) => {}
+                Err(err) => {
+                    error!(
+                        "Certificate SASL EXTERNAL bind failed on {} Active Directory. \
+                         Some DCs refuse it over StartTLS; try LDAPS. Reason: {err}\n",
+                        domain.to_uppercase().bold().red()
+                    );
+                    process::exit(0x0100);
+                }
+            }
+        } else {
+            debug!("Trying certificate authentication (LDAPS, implicit Schannel mapping)");
+        }
+
+        // Confirm the mapped identity via whoami (both transports).
+        match ldap.extended(WhoAmI).await.map(|r| r.success()) {
+            Ok(Ok((exop, _))) => {
+                let who = exop
+                    .val
+                    .as_ref()
+                    .map(|v| String::from_utf8_lossy(v).to_string())
+                    .unwrap_or_default();
+                if who.is_empty() {
+                    error!(
+                        "Certificate not mapped by {} Active Directory (empty whoami). \
+                         Check the certificate SID and the DC enforcement mode (KB5014754).\n",
+                        domain.to_uppercase().bold().red()
+                    );
+                    process::exit(0x0100);
+                }
+                info!(
+                    "Connected to {} Active Directory via certificate as {}!",
+                    domain.to_uppercase().bold().green(),
+                    who.bold().green()
+                );
+                info!("Starting data collection...");
+            }
+            Ok(Err(err)) => {
+                error!(
+                    "Certificate authentication failed on {} Active Directory. Reason: {err}\n",
+                    domain.to_uppercase().bold().red()
+                );
+                process::exit(0x0100);
+            }
+            Err(err) => {
+                error!(
+                    "Certificate authentication request failed on {} Active Directory. Reason: {err}\n",
+                    domain.to_uppercase().bold().red()
+                );
+                process::exit(0x0100);
+            }
+        }
+    } else if let Some(ref ntlm_password) = ldap_args.s_ntlm_password {
         debug!("Trying to connect with sasl_ntlm_bind() function (NTLM pass-the-hash)");
         let res = ldap
             .sasl_ntlm_bind(&ldap_args.s_username, ntlm_password)
@@ -154,15 +254,6 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
             let controls = vec![sd_flags, show_deleted];
             ldap.with_controls(controls.to_owned());
 
-            // Prepare filter
-            // let mut _s_filter: &str = "";
-            // if cn.contains("Configuration") {
-            //     _s_filter = "(|(objectclass=pKIEnrollmentService)(objectclass=pkicertificatetemplate)(objectclass=subschema)(objectclass=certificationAuthority)(objectclass=container))";
-            // } else {
-            //     _s_filter = "(objectClass=*)";
-            // }
-            //let _s_filter = "(objectClass=*)";
-            //let _s_filter = "(objectGuid=*)";
             info!("Ldap filter : {}", ldapfilter.bold().green());
             let _s_filter = ldapfilter;
 
@@ -213,10 +304,6 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
                 }
             }
         }
-        // // If no result exit program
-        // if rs.is_empty() {
-        //     process::exit(0x0100);
-        // }
 
         ldap.unbind().await?;
     }
@@ -227,12 +314,10 @@ pub async fn ldap_search<S: Storage<LdapSearchEntry>>(
     drop(ldap);
     if total == 0 {
         error!("No LDAP objects found! Exiting...");
-        // std::fs::remove_file(cache_path)?; // TODO: return error so we can cleanup cache
         process::exit(0x0100);
     }
 
     storage.flush()?;
-
 
     // Return the vector with the result
     Ok(total)
@@ -249,6 +334,7 @@ struct LdapArgs {
 }
 
 /// Function to prepare LDAP arguments.
+#[allow(clippy::too_many_arguments)]
 fn ldap_constructor(
     ldaps: bool,
     ip: Option<&str>,
@@ -259,6 +345,8 @@ fn ldap_constructor(
     password: Option<&str>,
     hashes: Option<&str>,
     kerberos: bool,
+    // When true, no username/password is needed (identity comes from the cert)
+    use_cert: bool,
 ) -> Result<LdapArgs, Box<dyn Error>> {
     // Prepare ldap url
     let s_url = prepare_ldap_url(ldaps, ip, port, domain);
@@ -268,10 +356,10 @@ fn ldap_constructor(
 
     let use_ntlm = hashes.is_some();
 
-    // Username prompt
+    // Username prompt (skipped for certificate auth: identity comes from the cert)
     let mut s = String::new();
     let mut _s_username: String;
-    if username.is_none() && !kerberos {
+    if username.is_none() && !kerberos && !use_cert {
         print!("Username: ");
         io::stdout().flush()?;
         stdin()
@@ -326,9 +414,9 @@ fn ldap_constructor(
         None => None,
     };
 
-    // Password prompt (skip when using NTLM hash)
+    // Password prompt (skip for NTLM hash, Kerberos, and certificate auth)
     let mut _s_password: String = String::new();
-    if !use_ntlm && !_s_username.contains("not set") && !kerberos {
+    if !use_ntlm && !_s_username.contains("not set") && !kerberos && !use_cert {
         _s_password = match password {
             Some(p) => p.to_owned(),
             None => rpassword::prompt_password("Password: ").unwrap_or("not set".to_string()),
@@ -353,7 +441,9 @@ fn ldap_constructor(
     debug!("Domain: {}", domain);
     debug!("Username: {}", _s_username);
     debug!("Email: {}", s_email.to_lowercase());
-    if use_ntlm {
+    if use_cert {
+        debug!("Auth: certificate (Pass-the-Certificate)");
+    } else if use_ntlm {
         debug!("Auth: NTLM pass-the-hash");
     } else {
         debug!("Password: {}", _s_password);

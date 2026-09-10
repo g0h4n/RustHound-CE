@@ -7,3 +7,6 @@ rusthound-ce*
 .vscode
 .rusthound-cache
 *.ccache
+*.crt
+*.key
+*.pfx
