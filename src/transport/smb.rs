@@ -205,3 +205,21 @@ pub fn nt_hash_from_str(raw: &str) -> Option<[u8; 16]> {
     }
     Some(out)
 }
+
+/// Normalize a raw `-u/--ldapusername` value into the bare NTLM username
+/// expected by SMB SESSION_SETUP.
+///
+/// `-u` is documented/used as `user@domain.local`, which is correct for LDAP
+/// but not for SMB: `smb.login()`/`login_hash()` build the NTLM identity
+/// themselves as `domain + "\" + user`, so passing a UPN-suffixed or
+/// `DOMAIN\`-prefixed value through unmodified produces an invalid identity
+/// (e.g. `SCAFFOLD.HTB\j.harris@scaffold.htb`) and the DC replies
+/// STATUS_LOGON_FAILURE. Strip both forms so callers always pass a bare
+/// sAMAccountName-style username. LDAP's own bind logic (transport::ldap)
+/// already handles its format correctly and must not use this helper.
+pub fn smb_user(raw: &str) -> String {
+    let raw = raw.trim();
+    let no_upn = raw.split('@').next().unwrap_or(raw);
+    let bare = no_upn.rsplit('\\').next().unwrap_or(no_upn);
+    bare.to_string()
+}

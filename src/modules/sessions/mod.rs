@@ -40,7 +40,7 @@ use dcerpc::rrp::{RegistryClient, RegistrySession};
 use dcerpc::srvsvc::SrvsvcClient;
 use dcerpc::wkssvc::{WkstaUser, WkstaUserClient};
 use smb2_client::SmbClient;
-use crate::transport::smb::{connect_ipc, open_rpc_pipe, SmbAuth};
+use crate::transport::smb::{connect_ipc, open_rpc_pipe, smb_user, SmbAuth};
 
 use crate::args::{CollectionMethod, Options};
 use crate::objects::common::UserComputerSession;
@@ -95,7 +95,7 @@ pub async fn run(
     // 3) Enumerate with bounded concurrency (throttle) instead of a serial loop.
     let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
     let domain = args.domain.clone();
-    let user = args.username.clone().unwrap_or_default();
+    let user = smb_user(args.username.as_deref().unwrap_or_default());
     let password = args.password.clone().unwrap_or_default();
     let nt_hash = parse_hash(args.hashes.as_deref()); // "LM:NT" | ":NT" | "NT" -> [u8;16]
     let method = args.collection_method.clone();
