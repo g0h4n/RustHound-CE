@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.5.12 - 2026-09-10
+
+### Added
+
+Add certificate authentication for the LDAP collection ([#31](https://github.com/g0h4n/RustHound-CE/issues/31)): authenticate over LDAP with a client certificate (`--pfx` / `--pfx-pass`, or `--crt` / `--key`) instead of a password, NT hash, or Kerberos ticket. The DC maps the certificate at the TLS layer (Schannel), so no bind is needed. StartTLS on 389 by default, or LDAPS 636 with `--ldaps`; TLS 1.2 enforced. SMB-based modules (sessions, GPO/SYSVOL) are skipped under certificate auth. Prototyped in [PassTheCert-rs](https://github.com/g0h4n/PassTheCert-rs), ported from [AlmondOffSec/PassTheCert](https://github.com/AlmondOffSec/PassTheCert).
+ 
+### Fixed
+ 
+Thanks to [@dmarsoev](https://github.com/dmarsoev) ([#66](https://github.com/g0h4n/RustHound-CE/pull/66)):
+ 
+- SMB auth with a UPN username (`-u user@domain.local`) failed with `STATUS_LOGON_FAILURE`; a new `smb_user()` helper normalizes the SMB identity (LDAP untouched).
+- The ESC8 probe could panic and abort the run (`rayon` + `reqwest::blocking` inside async); now uses `spawn_blocking` and logs-and-skips task failures.
+- ESC8 false negatives: the anonymous NTLM Type 1 blob set `NEGOTIATE_VERSION` without the Version block, so IIS never returned a Type 2 challenge; the flag is dropped and web-enrollment-without-EPA is detected again (matches Certipy).
+
 ## 2.5.11 - 2026-09-08
 
 Add Kerberos (pass-the-ticket) authentication to the SMB transport ([#61](https://github.com/g0h4n/RustHound-CE/issues/61)). With `--kerberos`, RustHound-CE reads a TGT from `KRB5CCNAME`, gets a `cifs/<host>` service ticket and builds a SPNEGO AP-REQ for `SmbClient::login_kerberos`, so the sessions and GPO SYSVOL collections work over Kerberos next to password and pass-the-hash. Pure Rust (self-contained ccache v4 parser + `picky-krb`, no system GSSAPI, no external ccache crate). TGS/AP-REQ and GSS helpers ported from [icedracon/adhammer](https://github.com/icedracon/adhammer).
