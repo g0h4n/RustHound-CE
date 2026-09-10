@@ -9,88 +9,47 @@
 //!
 //! RustHound-CE is a cross-platform and cross-compiled BloodHound collector tool written in Rust, making it compatible with Linux, Windows, and macOS. It therefore generates all the JSON files that can be analyzed by BloodHound Community Edition. This version is only compatible with [BloodHound Community Edition](https://github.com/SpecterOps/BloodHound). The version compatible with [BloodHound Legacy](https://github.com/BloodHoundAD/BloodHound) can be found on [NeverHack's github](https://github.com/NH-RED-TEAM/RustHound).
 //!
+//! RustHound-CE can be use as a library. The pipeline is exposed as two composable
+//! functions, see [INTEGRATION.md](https://github.com/g0h4n/RustHound-CE/blob/main/INTEGRATION.md)
+//! for the full guide.
 //!
-//! You can either run the binary:
+//! Authenticate, then run the whole collection:
 //! ```ignore
-//! ---------------------------------------------------
-//! Initializing RustHound-CE at 13:37:00 UTC on 01/12/23
-//! Powered by @g0h4n_0
-//! ---------------------------------------------------
-//! 
-//! Active Directory data collector for BloodHound Community Edition.
-//! g0h4n <https://twitter.com/g0h4n_0>
-//! 
-//! Usage: rusthound-ce [OPTIONS] --domain <domain>
-//! 
-//! Options:
-//!   -v...          Set the level of verbosity
-//!   -h, --help     Print help
-//!   -V, --version  Print version
-//! 
-//! REQUIRED VALUES:
-//!   -d, --domain <domain>  Domain name like: DOMAIN.LOCAL
-//! 
-//! OPTIONAL VALUES:
-//!   -u, --ldapusername <ldapusername>  LDAP username, like: user@domain.local
-//!   -p, --ldappassword <ldappassword>  LDAP password
-//!   -H, --hashes <hashes>              NT hash for pass-the-hash authentication (NTLM), accept [NTHASH, :NTHASH, LMHASH:NTHASH]
-//!   -f, --ldapfqdn <ldapfqdn>          Domain Controller FQDN like: DC01.DOMAIN.LOCAL or just DC01
-//!   -i, --ldapip <ldapip>              Domain Controller IP address like: 192.168.1.10
-//!   -P, --ldapport <ldapport>          LDAP port [default: 389, or 636 with --ldaps]
-//!   -n, --name-server <name-server>    Alternative IP address name server to use for DNS queries
-//!   -o, --output <output>              Output directory where you would like to save JSON files [default: ./]
-//! 
-//! CERTIFICATE AUTHENTICATION:
-//!       --pfx <pfx>            PFX/PKCS#12 client certificate for certificate authentication (Pass-the-Certificate). Uses StartTLS by default, or LDAPS with --ldaps
-//!       --pfx-pass <pfx-pass>  Password protecting the PFX file (optional)
-//!       --crt <crt>            PEM client certificate for certificate authentication (use with --key)
-//!       --key <key>            PEM private key for certificate authentication (use with --crt)
-//! 
-//! OPTIONAL FLAGS:
-//!   -c, --collectionmethod [<COLLECTIONMETHOD>]
-//!           Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL) (default: All) [possible values: All, DCOnly, Session, RegistryOnly, LdapOnly]
-//!       --ldap-filter <ldap-filter>
-//!           Use custom ldap-filter default is : (objectClass=*)
-//!       --ldaps
-//!           Force LDAPS using for request like: ldaps://DOMAIN.LOCAL/
-//!   -k, --kerberos
-//!           Use Kerberos authentication. Grabs credentials from ccache file (KRB5CCNAME) based on target parameters for Linux.
-//!       --dns-tcp
-//!           Use TCP instead of UDP for DNS queries
-//!   -z, --zip
-//!           Compress the JSON files into a zip archive
-//!       --cache
-//!           Cache LDAP search results to disk (reduce memory usage on large domains)
-//!       --cache-buffer <cache_buffer>
-//!           Buffer size to use when caching [default: 1000]
-//!       --resume
-//!           Resume the collection from the last saved state
-//! 
-//! OPTIONAL MODULES:
-//!       --fqdn-resolver  Use fqdn-resolver module to get computers IP address
+//! use rusthound_ce::{ldap_auth, run_collection, args::{Options, CollectionMethod}};
+//!
+//! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
+//! let options = Options {
+//!     domain: "essos.local".to_string(),
+//!     username: Some("daenerys.targaryen@essos.local".to_string()),
+//!     password: Some("BurnThemAll!".to_string()),
+//!     ldapfqdn: Some("meereen.essos.local".to_string()),
+//!     ldaps: true,
+//!     path: "/tmp/demo".to_string(),
+//!     collection_method: CollectionMethod::All,
+//!     zip: true,
+//!     ..Default::default()
+//! };
+//!
+//! // 1. authenticate (simple bind, pass-the-hash, Kerberos, or certificate)
+//! let mut ldap = ldap_auth(&options).await?;
+//! // 2. collect -> parse -> modules -> JSON/zip, returns the output path
+//! let out = run_collection(&mut ldap, &options).await?;
+//! println!("Output written to {out}");
+//! # Ok(())
+//! # }
 //! ```
-//! 
-//! Or build your own using the ldap_search() function:
+//!
+//! Or bring your own already-authenticated `ldap3::Ldap` session (for example
+//! one bound with a client certificate) and skip `ldap_auth`:
 //! ```ignore
-//! # use rusthound::ldap::ldap_search;
-//! # let ldaps = true;
-//! # let ip = Some("127.0.0.1");
-//! # let port = Some(676);
-//! # let domain = "DOMAIN.COM";
-//! # let ldapfqdn = "ad1.domain.com";
-//! # let username = Some("user");
-//! # let password = Some("pwd");
-//! # let kerberos= false;
-//! let result = ldap_search(
-//!     &ldaps,
-//!     &Some(ip),
-//!     &Some(port),
-//!     &domain,
-//!     &ldapfqdn,
-//!     &username,
-//!     &password,
-//!     kerberos,
-//! );
+//! use rusthound_ce::{run_collection, args::{Options, CollectionMethod}};
+//!
+//! # async fn demo(ldap: &mut ldap3::Ldap, mut options: Options) -> Result<(), Box<dyn std::error::Error>> {
+//! options.collection_method = CollectionMethod::LdapOnly; // no SMB creds over cert auth
+//! let out = run_collection(ldap, &options).await?;
+//! println!("Output written to {out}");
+//! # Ok(())
+//! # }
 //! ```
 //! 
 pub mod args;
