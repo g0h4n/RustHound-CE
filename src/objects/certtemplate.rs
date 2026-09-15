@@ -162,7 +162,7 @@ impl CertTemplate {
                 "objectGUID" => {
                     // objectGUID raw to string
                     let guid = decode_guid_le(&value[0]);
-                    self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
@@ -317,36 +317,37 @@ impl LdapObject for CertTemplate {
 // CertTemplate properties structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CertTemplateProperties {
-   domain: String,
-   name: String,
-   distinguishedname: String,
-   domainsid: String,
-   isaclprotected: bool,
-   description: Option<String>,
-   whencreated: i64,
-   validityperiod: String,
-   renewalperiod: String,
-   schemaversion: i64,
-   displayname: String,
-   oid: String,
-   enrollmentflag: String,
-   requiresmanagerapproval: bool,
-   nosecurityextension: bool,
-   certificatenameflag: String,
-   enrolleesuppliessubject: bool,
-   subjectaltrequireupn: bool,
-   subjectaltrequiredns: bool,
-   subjectaltrequiredomaindns: bool,
-   subjectaltrequireemail: bool,
-   subjectaltrequirespn: bool,
-   subjectrequireemail: bool,
-   ekus: Vec<String>,
-   certificateapplicationpolicy: Vec<String>,
-   authorizedsignatures: i64,
-   applicationpolicies: Vec<String>,
-   issuancepolicies: Vec<String>,
-   effectiveekus: Vec<String>,
-   authenticationenabled: bool,
+    domain: String,
+    name: String,
+    distinguishedname: String,
+    domainsid: String,
+    objectguid: String,
+    isaclprotected: bool,
+    description: Option<String>,
+    whencreated: i64,
+    validityperiod: String,
+    renewalperiod: String,
+    schemaversion: i64,
+    displayname: String,
+    oid: String,
+    enrollmentflag: String,
+    requiresmanagerapproval: bool,
+    nosecurityextension: bool,
+    certificatenameflag: String,
+    enrolleesuppliessubject: bool,
+    subjectaltrequireupn: bool,
+    subjectaltrequiredns: bool,
+    subjectaltrequiredomaindns: bool,
+    subjectaltrequireemail: bool,
+    subjectaltrequirespn: bool,
+    subjectrequireemail: bool,
+    ekus: Vec<String>,
+    certificateapplicationpolicy: Vec<String>,
+    authorizedsignatures: i64,
+    applicationpolicies: Vec<String>,
+    issuancepolicies: Vec<String>,
+    effectiveekus: Vec<String>,
+    authenticationenabled: bool,
 }
 
 impl Default for CertTemplateProperties {
@@ -356,6 +357,7 @@ impl Default for CertTemplateProperties {
             name: String::from(""),
             distinguishedname: String::from(""),
             domainsid: String::from(""),
+            objectguid: String::from(""),
             isaclprotected: false,
             description: None,
             whencreated: -1,

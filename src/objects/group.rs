@@ -5,6 +5,7 @@ use log::{debug, trace};
 use std::collections::HashMap;
 use std::error::Error;
 
+use crate::enums::decode_guid_le;
 use crate::enums::regex::OBJECT_SID_RE1;
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::enums::acl::parse_ntsecuritydescriptor;
@@ -179,6 +180,11 @@ impl Group {
         // For all, bins attributs
         for (key, value) in &result_bin {
             match key.as_str() {
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.properties.objectguid = guid;
+                }
                 "objectSid" => {
                     // objectSid raw to string
                     let sid = sid_maker(LdapSid::parse(&value[0]).unwrap().1, domain);
@@ -320,6 +326,7 @@ pub struct GroupProperties {
     name: String,
     distinguishedname: String,
     domainsid: String,
+    objectguid: String,
     isaclprotected: bool,
     highvalue: bool,
     samaccountname: String,

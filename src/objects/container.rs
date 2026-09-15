@@ -93,6 +93,7 @@ impl Container {
                 "objectGUID" => {
                     let guid = decode_guid_le(&value[0]);
                     self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
@@ -138,6 +139,7 @@ pub struct ContainerProperties {
    name: String,
    distinguishedname: String,
    domainsid: String,
+   objectguid: String,
    isaclprotected: bool,
    highvalue: bool,
    description: Option<String>,

@@ -100,6 +100,7 @@ impl IssuancePolicie {
                     // objectGUID raw to string
                     let guid = decode_guid_le(&value[0]);
                     self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
@@ -216,6 +217,7 @@ pub struct IssuancePolicieProperties {
     name: String,
     distinguishedname: String,
     domainsid: String,
+    objectguid: String,
     isaclprotected: bool,
     description: Option<String>,
     whencreated: i64,
@@ -230,6 +232,7 @@ impl Default for IssuancePolicieProperties {
             name: String::from(""),
             distinguishedname: String::from(""),
             domainsid: String::from(""),
+            objectguid: String::from(""),
             isaclprotected: false,
             description: None,
             whencreated: -1,

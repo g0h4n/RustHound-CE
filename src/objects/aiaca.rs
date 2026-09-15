@@ -104,6 +104,7 @@ impl AIACA {
                     // objectGUID raw to string
                     let guid = decode_guid_le(&value[0]);
                     self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
@@ -260,20 +261,21 @@ impl LdapObject for AIACA {
 // AIACA properties structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AIACAProperties {
-   domain: String,
-   name: String,
-   distinguishedname: String,
-   domainsid: String,
-   isaclprotected: bool,
-   description: Option<String>,
-   whencreated: i64,
-   crosscertificatepair: Vec<String>,
-   hascrosscertificatepair: bool,
-   certthumbprint: String,
-   certname: String,
-   certchain: Vec<String>,
-   hasbasicconstraints: bool,
-   basicconstraintpathlength: u32,
+    domain: String,
+    name: String,
+    distinguishedname: String,
+    domainsid: String,
+    objectguid: String,
+    isaclprotected: bool,
+    description: Option<String>,
+    whencreated: i64,
+    crosscertificatepair: Vec<String>,
+    hascrosscertificatepair: bool,
+    certthumbprint: String,
+    certname: String,
+    certchain: Vec<String>,
+    hasbasicconstraints: bool,
+    basicconstraintpathlength: u32,
 }
 
 impl Default for AIACAProperties {
@@ -283,6 +285,7 @@ impl Default for AIACAProperties {
             name: String::from(""),
             distinguishedname: String::from(""),
             domainsid: String::from(""),
+            objectguid: String::from(""),
             isaclprotected: false,
             description: None,
             whencreated: -1,

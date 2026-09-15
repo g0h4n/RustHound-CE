@@ -7,6 +7,7 @@ use std::error::Error;
 use std::collections::HashSet;
 use x509_parser::prelude::*;
 
+use crate::enums::decode_guid_le;
 use crate::enums::regex::{OBJECT_SID_RE1, SID_PART1_RE1};
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::utils::date::{convert_timestamp, string_to_epoch};
@@ -295,6 +296,11 @@ impl User {
         let mut sid: String = "".to_owned();
         for (key, value) in &result_bin {
             match key.as_str() {
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.properties.objectguid = guid;
+                }
                 "objectSid" => {
                     sid = sid_maker(LdapSid::parse(&value[0]).unwrap().1, domain);
                     self.object_identifier = sid.to_owned();
@@ -461,6 +467,7 @@ pub struct UserProperties {
     domain: String,
     name: String,
     domainsid: String,
+    objectguid: String,
     isaclprotected: bool,
     distinguishedname: String,
     highvalue: bool,

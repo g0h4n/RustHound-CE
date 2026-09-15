@@ -6,7 +6,7 @@ use log::{info, debug, trace};
 use std::collections::HashMap;
 use std::error::Error;
 
-use crate::enums::{OBJECT_SID_RE1, SID_PART1_RE1};
+use crate::enums::{OBJECT_SID_RE1, SID_PART1_RE1, decode_guid_le};
 use crate::objects::common::{LdapObject, Session, AceTemplate, Member, SPNTarget, LocalGroup, Link, DCRegistryData};
 use crate::utils::date::{convert_timestamp,string_to_epoch};
 use crate::utils::crypto::convert_encryption_types;
@@ -326,6 +326,11 @@ impl Computer {
         // For all, bins attributs
         for (key, value) in &result_bin {
             match key.as_str() {
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.properties.objectguid = guid;
+                }
                 "objectSid" => {
                     // objectSid raw to string
                     sid = sid_maker(LdapSid::parse(&value[0]).unwrap().1, domain);
@@ -504,6 +509,7 @@ pub struct ComputerProperties {
     name: String,
     distinguishedname: String,
     domainsid: String,
+    objectguid: String,
     isaclprotected: bool,
     highvalue: bool,
     samaccountname: String,

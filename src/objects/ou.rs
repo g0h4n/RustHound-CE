@@ -118,10 +118,12 @@ impl Ou {
           // For all, bins attributes
         for (key, value) in &result_bin {
              match key.as_str() {
-                 "objectGUID" => {
-                     // objectGUID raw to string
-                     self.object_identifier = decode_guid_le(&value[0]).to_owned();
-                 }
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
+                }
                  "nTSecurityDescriptor" => {
                      // trace!("nTSecurityDescriptor ACES ACLS ?");
                      // nTSecurityDescriptor raw to string
@@ -234,6 +236,7 @@ pub struct OuProperties {
     name: String,
     distinguishedname: String,
     domainsid: String,
+    objectguid: String,
     isaclprotected: bool,
     highvalue: bool,
     description: Option<String>,

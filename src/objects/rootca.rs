@@ -98,7 +98,9 @@ impl RootCA {
             match key.as_str() {
                 "objectGUID" => {
                     // objectGUID raw to string
-                    self.object_identifier = decode_guid_le(&value[0]).to_owned();
+                    let guid = decode_guid_le(&value[0]);
+                    self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
@@ -259,6 +261,7 @@ pub struct RootCAProperties {
    name: String,
    distinguishedname: String,
    domainsid: String,
+   objectguid: String,
    isaclprotected: bool,
    description: Option<String>,
    whencreated: i64,
@@ -276,6 +279,7 @@ impl Default for RootCAProperties {
             name: String::from(""),
             distinguishedname: String::from(""),
             domainsid: String::from(""),
+            objectguid: String::from(""),
             isaclprotected: false,
             description: None,
             whencreated: -1,

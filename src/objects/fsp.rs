@@ -5,6 +5,7 @@ use log::{debug, trace};
 use std::collections::HashMap;
 use std::error::Error;
 
+use crate::enums::decode_guid_le;
 use crate::enums::regex::OBJECT_SID_RE1;
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::utils::date::string_to_epoch;
@@ -110,6 +111,20 @@ impl Fsp {
             }
         }
 
+
+        // For all, bins attributs
+        for (key, value) in &result_bin {
+            match key.as_str() {
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
+                }
+                _ => {}
+            }
+        }
+
         // Push DN and SID in HashMap
         if self.object_identifier != "SID" {
             dn_sid.insert(
@@ -133,6 +148,7 @@ pub struct FspProperties {
    name: String,
    distinguishedname: String,
    domainsid: String,
+   objectguid: String,
    isaclprotected: bool,
    highvalue: bool,
    description: Option<String>,
