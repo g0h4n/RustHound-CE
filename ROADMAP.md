@@ -31,6 +31,12 @@
 Attribute-by-attribute comparison between `rusthound-ce v2.5.13` and `SharpHound v2.16.0.0`,
 measured on the same domain on `2026-09-15`. Counts every checkbox of the [List of attributes](#list-of-attributes) section, including nested sub-fields.
 
+Attribute-by-attribute comparison between `rusthound-ce` and `SharpHound v2.16.0.0`,
+measured on the same domain on `2026-09-15`, `rusthound-ce` side updated after the
+ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)). Counts every
+checkbox of the [List of attributes](#list-of-attributes) section, including nested
+sub-fields.
+
 | Object | Attributes | :white_check_mark: Implemented | :red_circle: Missing | Compatibility |
 | :--- | ---: | ---: | ---: | :--- |
 | CertTemplate | 47 | 40 | 7 | `█████████░` 85.1% |
@@ -43,17 +49,16 @@ measured on the same domain on `2026-09-15`. Counts every checkbox of the [List 
 | NtAuthStore | 24 | 19 | 5 | `████████░░` 79.2% |
 | Container | 26 | 20 | 6 | `████████░░` 76.9% |
 | Group | 32 | 22 | 10 | `███████░░░` 68.8% |
+| EnterpriseCA | 70 | 45 | 25 | `██████░░░░` 64.3% |
 | IssuancePolicies | 27 | 17 | 10 | `██████░░░░` 63.0% |
-| EnterpriseCA | 69 | 36 | 33 | `█████░░░░░` 52.2% |
 | Computer | 119 | 59 | 60 | `█████░░░░░` 49.6% |
-| **Total** | **586** | **410** | **176** | **`███████░░░` 70.0%** |
+| **Total** | **587** | **419** | **168** | **`███████░░░` 71.4%** |
 
-> The two lowest scores come from remote collection rather than LDAP parsing.
+> The lowest scores come from remote collection rather than LDAP parsing.
 > `Computer` is pulled down by `LocalGroups`, `NTLMRegistryData`, `SmbInfo`,
-> `IsWebClientRunning` and `DCRegistryData`; `EnterpriseCA` by `CARegistryData`
-> and `HttpEnrollmentEndpoints`. Those 63 attributes are all unimplemented and
-> require RPC/SMB/HTTP access to the hosts; excluding them, coverage rises to
-> 78.4% (410 / 523).
+> `IsWebClientRunning` and `DCRegistryData`; `EnterpriseCA` by `CARegistryData`.
+> Those 55 attributes are all unimplemented and require RPC/SMB access to the
+> hosts; excluding them, coverage rises
 
 ## Authentification
   - [x] LDAP (389) :white_check_mark:
@@ -90,7 +95,7 @@ measured on the same domain on `2026-09-15`. Counts every checkbox of the [List 
 - [ ] Remote registry collection (`NTLMRegistryData`, `DCRegistryData`, `CARegistryData`) :red_circle: :new:
 - [ ] SMB signing probe (`SmbInfo`) :red_circle: :new:
 - [ ] WebClient/WebDAV service probe (`IsWebClientRunning`, prerequisite for ESC8 / coercion paths) :red_circle: :new:
-- [ ] HTTP enrollment endpoints probe (`HttpEnrollmentEndpoints`, ADCS web enrollment over HTTP/HTTPS/EPA) :red_circle: :new:
+- [x] HTTP enrollment endpoints probe (`HttpEnrollmentEndpoints`, ADCS web enrollment over HTTP/HTTPS/EPA) :red_circle: :new:
 
 ## List of attributes
 
@@ -635,15 +640,16 @@ measured on the same domain on `2026-09-15`. Counts every checkbox of the [List 
     - [ ] `Value` :red_circle:
     - [ ] `Collected` :red_circle:
     - [ ] `FailureReason` :red_circle:
-- [ ] `HttpEnrollmentEndpoints` :red_circle: :new: (key is emitted but always empty)
-    - [ ] `Result`:`Url` :red_circle: :new:
-    - [ ] `Result`:`Type` :red_circle: :new:
-    - [ ] `Result`:`Status` :red_circle: :new:
-    - [ ] `Result`:`ADCSWebEnrollmentHTTP` :red_circle: :new:
-    - [ ] `Result`:`ADCSWebEnrollmentHTTPS` :red_circle: :new:
-    - [ ] `Result`:`ADCSWebEnrollmentEPA` :red_circle: :new:
-    - [ ] `Collected` :red_circle: :new:
-    - [ ] `FailureReason` :red_circle: :new:
+- [x] `HttpEnrollmentEndpoints` :white_check_mark:
+    - [x] `Result`:`Url` :white_check_mark:
+    - [x] `Result`:`Type` :white_check_mark: (always `WebEnrollmentApplication`)
+    - [x] `Result`:`Status` :white_check_mark:
+    - [x] `Result`:`ADCSWebEnrollmentHTTP` :white_check_mark:
+    - [x] `Result`:`ADCSWebEnrollmentHTTPS` :white_check_mark:
+    - [x] `Result`:`ADCSWebEnrollmentEPA` :white_check_mark:
+    - [x] `Collected` :white_check_mark: (`true` when the port answered or is closed, `false` when the HTTP exchange failed)
+    - [x] `FailureReason` :white_check_mark:
+    - [ ] CES endpoints, `/{CAName}_CES_Kerberos/service.svc` with `Type`: `EnrollmentWebService` :red_circle: :new: (SharpHound probes 4 URLs per CA, we probe 2)
 - [x] `Aces`:`PrincipalSID` :white_check_mark:
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
