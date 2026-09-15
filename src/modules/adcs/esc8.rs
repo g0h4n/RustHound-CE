@@ -12,6 +12,20 @@
 //! This approach requires a single HTTP round-trip, no credentials, no full
 //! NTLM handshake, no relay attempted.
 //!
+//! Three outcomes are distinguished per endpoint, matching SharpHound's JSON shape:
+//!
+//! | Situation                          | JSON                                               |
+//! |------------------------------------|----------------------------------------------------|
+//! | TCP port closed / unreachable      | `Collected: true`, `NotVulnerable_PortInaccessible` |
+//! | Port open, HTTP request failed     | `Collected: false` + `FailureReason`                |
+//! | Port open, status determined       | `Collected: true` + the matching status             |
+//!
+//! A closed port is a *result*, not a collection failure: the CA was successfully
+//! determined not to expose web enrollment there. A 404 on an open port is the
+//! opposite, the probe could not conclude, so it is reported as not collected.
+//! Both endpoints are ALWAYS emitted, so an empty `HttpEnrollmentEndpoints` array
+//! now only ever means "the module did not run".
+//!
 //! Module path: `src/modules/adcs/esc8.rs`
 //! Required Cargo dependency: `reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls-ring"] }`
 
@@ -20,6 +34,7 @@ use crate::utils::b64::{b64_decode, b64_encode};
 use log::{debug, warn};
 use reqwest::blocking::Client;
 use reqwest::header::{AUTHORIZATION, WWW_AUTHENTICATE};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 // NTLM AvPair IDs
@@ -29,6 +44,17 @@ const MV_AV_EOL: u16 = 0x0000;
 
 /// `MsvAvChannelBindings`, present with non-zero length when EPA is required.
 const MV_AV_CHANNEL_BINDINGS: u16 = 0x000A;
+
+// Timeouts
+
+/// TCP connect timeout for the port-reachability pre-check.
+const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+/// Connect timeout for the reqwest clients.
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+/// Total request timeout, plain HTTP.
+const HTTP_TIMEOUT: Duration = Duration::from_secs(5);
+/// Total request timeout, HTTPS (TLS handshake included).
+const HTTPS_TIMEOUT: Duration = Duration::from_secs(8);
 
 // Minimal NTLM Type 1 (Negotiate)
 
@@ -72,12 +98,26 @@ pub const STATUS_VULNERABLE_HTTPS: &str = "Vulnerable_NtlmHttpsEndpointWithoutEp
 pub const STATUS_NOT_VULN_EPA:     &str = "NotVulnerable_EpaEnabled";
 pub const STATUS_NOT_VULN_PORT:    &str = "NotVulnerable_PortInaccessible";
 
+/// Value of `Type` in the serialized endpoint, matching SharpHound.
+const TYPE_WEB_ENROLLMENT: &str = "WebEnrollmentApplication";
+
+/// URL reported in the JSON, kept identical to SharpHound for ingest parity.
+/// The probe itself targets `certfnsh.asp` under this path.
+fn display_url(scheme: &str, host: &str) -> String {
+    format!("{}://{}/certsrv/", scheme, host)
+}
+
+/// URL actually requested by the probes.
+fn probe_url(scheme: &str, host: &str) -> String {
+    format!("{}://{}/certsrv/certfnsh.asp", scheme, host)
+}
+
 // Public types
 
 /// Status of a single web-enrollment endpoint (HTTP or HTTPS).
 #[derive(Debug, Clone, PartialEq)]
 pub enum WebEnrollmentStatus {
-    /// Endpoint not reachable, or web enrollment not installed.
+    /// Endpoint answered but web enrollment is not exposed, or NTLM not offered.
     NotFound,
     /// Web enrollment is reachable and NTLM auth is available, relay possible.
     Vulnerable,
@@ -85,15 +125,69 @@ pub enum WebEnrollmentStatus {
     Protected,
 }
 
+/// Outcome of a single probe, mapped 1:1 onto the three JSON shapes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProbeOutcome {
+    /// The port answered and a status could be determined.
+    Reached(WebEnrollmentStatus),
+    /// TCP connection refused, filtered or timed out. This is a result.
+    PortClosed,
+    /// Port open but the HTTP exchange failed (404, TLS error, timeout...).
+    Failed(String),
+}
+
+/// Reduce an outcome to a status; anything but `Reached` counts as not found.
+fn outcome_status(outcome: &ProbeOutcome) -> WebEnrollmentStatus {
+    match outcome {
+        ProbeOutcome::Reached(status) => status.clone(),
+        _ => WebEnrollmentStatus::NotFound,
+    }
+}
+
 // Builder functions for WebEnrollmentEndpoint
 // (impl on an external type would violate the orphan rule)
 
-/// Build a WebEnrollmentEndpoint from a plain-HTTP probe result.
-fn build_http_endpoint(host: &str, vulnerable: bool) -> WebEnrollmentEndpoint {
+/// Shared tail of both builders: a closed port and a failed request.
+fn build_non_result(
+    url: String,
+    outcome: &ProbeOutcome,
+) -> Option<WebEnrollmentEndpoint> {
+    match outcome {
+        ProbeOutcome::PortClosed => Some(WebEnrollmentEndpoint {
+            result: Some(WebEnrollmentResult {
+                url,
+                enrollment_type:           TYPE_WEB_ENROLLMENT.to_string(),
+                status:                    STATUS_NOT_VULN_PORT.to_string(),
+                adcs_web_enrollment_http:  false,
+                adcs_web_enrollment_https: false,
+                adcs_web_enrollment_epa:   false,
+            }),
+            collected:      true,
+            failure_reason: None,
+        }),
+        ProbeOutcome::Failed(reason) => Some(WebEnrollmentEndpoint {
+            result:         None,
+            collected:      false,
+            failure_reason: Some(reason.clone()),
+        }),
+        ProbeOutcome::Reached(_) => None,
+    }
+}
+
+/// Build a WebEnrollmentEndpoint from a plain-HTTP probe outcome.
+fn build_http_endpoint(host: &str, outcome: &ProbeOutcome) -> WebEnrollmentEndpoint {
+    let url = display_url("http", host);
+
+    if let Some(ep) = build_non_result(url.clone(), outcome) {
+        return ep;
+    }
+
+    let vulnerable = outcome_status(outcome) == WebEnrollmentStatus::Vulnerable;
+
     WebEnrollmentEndpoint {
         result: Some(WebEnrollmentResult {
-            url:                       format!("http://{}/certsrv/", host),
-            enrollment_type:           "WebEnrollmentApplication".to_string(),
+            url,
+            enrollment_type:           TYPE_WEB_ENROLLMENT.to_string(),
             status: if vulnerable {
                 STATUS_VULNERABLE_HTTP.to_string()
             } else {
@@ -108,17 +202,24 @@ fn build_http_endpoint(host: &str, vulnerable: bool) -> WebEnrollmentEndpoint {
     }
 }
 
-/// Build a WebEnrollmentEndpoint from an HTTPS probe result.
-fn build_https_endpoint(host: &str, https_status: &WebEnrollmentStatus) -> WebEnrollmentEndpoint {
-    let (status, https, epa) = match https_status {
+/// Build a WebEnrollmentEndpoint from an HTTPS probe outcome.
+fn build_https_endpoint(host: &str, outcome: &ProbeOutcome) -> WebEnrollmentEndpoint {
+    let url = display_url("https", host);
+
+    if let Some(ep) = build_non_result(url.clone(), outcome) {
+        return ep;
+    }
+
+    let (status, https, epa) = match outcome_status(outcome) {
         WebEnrollmentStatus::Vulnerable => (STATUS_VULNERABLE_HTTPS.to_string(), true,  false),
         WebEnrollmentStatus::Protected  => (STATUS_NOT_VULN_EPA.to_string(),     true,  true),
         WebEnrollmentStatus::NotFound   => (STATUS_NOT_VULN_PORT.to_string(),    false, false),
     };
+
     WebEnrollmentEndpoint {
         result: Some(WebEnrollmentResult {
-            url:                       format!("https://{}/certsrv/", host),
-            enrollment_type:           "WebEnrollmentApplication".to_string(),
+            url,
+            enrollment_type:           TYPE_WEB_ENROLLMENT.to_string(),
             status,
             adcs_web_enrollment_http:  false,
             adcs_web_enrollment_https: https,
@@ -133,13 +234,14 @@ fn build_https_endpoint(host: &str, https_status: &WebEnrollmentStatus) -> WebEn
 #[derive(Debug, Clone)]
 pub struct Esc8Result {
     pub host: String,
-    /// HTTP endpoint status.
+    /// HTTP endpoint status (a closed port or failed request collapses to `NotFound`).
     pub http: WebEnrollmentStatus,
     /// HTTPS endpoint status (checks EPA via NTLM Type 2 parsing).
     pub https: WebEnrollmentStatus,
     /// `true` if either endpoint is relay-able.
     pub vulnerable: bool,
     /// Both endpoints (HTTP + HTTPS), ready for JSON serialization.
+    /// Never empty: two entries are always produced.
     pub endpoints: Vec<WebEnrollmentEndpoint>,
 }
 
@@ -147,14 +249,14 @@ pub struct Esc8Result {
 
 /// Run the full ESC8 probe against a CA host (both HTTP and HTTPS).
 ///
-/// Returns `None` if the host is completely unreachable on both endpoints.
-pub fn check_esc8(host: &str) -> Option<Esc8Result> {
-    let http  = probe_http(host);
-    let https = probe_https(host);
+/// Always returns a result carrying exactly two endpoints, so the caller can
+/// tell "probed, nothing found" apart from "never probed".
+pub fn check_esc8(host: &str) -> Esc8Result {
+    let http_outcome  = probe_http(host);
+    let https_outcome = probe_https(host);
 
-    if http == WebEnrollmentStatus::NotFound && https == WebEnrollmentStatus::NotFound {
-        return None;
-    }
+    let http  = outcome_status(&http_outcome);
+    let https = outcome_status(&https_outcome);
 
     let vulnerable = http  == WebEnrollmentStatus::Vulnerable
         || https == WebEnrollmentStatus::Vulnerable;
@@ -162,33 +264,85 @@ pub fn check_esc8(host: &str) -> Option<Esc8Result> {
     if http == WebEnrollmentStatus::Vulnerable {
         warn!(
             "ESC8 detected on {}, Web Enrollment exposed over HTTP without EPA \
-             (NTLM relay possible on http://{}/certsrv/certfnsh.asp)",
-            host, host
+             (NTLM relay possible on {})",
+            host,
+            probe_url("http", host)
         );
     }
     if https == WebEnrollmentStatus::Vulnerable {
         warn!(
             "ESC8 detected on {}, Web Enrollment over HTTPS without Channel Binding \
-             (NTLM relay possible on https://{}/certsrv/certfnsh.asp)",
-            host, host
+             (NTLM relay possible on {})",
+            host,
+            probe_url("https", host)
         );
     }
     if https == WebEnrollmentStatus::Protected {
         debug!("ESC8 HTTPS {}: EPA/Channel Binding enforced, protected", host);
     }
+    if let ProbeOutcome::Failed(ref reason) = http_outcome {
+        debug!("ESC8 HTTP {} not collected: {}", host, reason);
+    }
+    if let ProbeOutcome::Failed(ref reason) = https_outcome {
+        debug!("ESC8 HTTPS {} not collected: {}", host, reason);
+    }
 
     let endpoints = vec![
-        build_http_endpoint(host, http == WebEnrollmentStatus::Vulnerable),
-        build_https_endpoint(host, &https),
+        build_http_endpoint(host, &http_outcome),
+        build_https_endpoint(host, &https_outcome),
     ];
 
-    Some(Esc8Result {
+    Esc8Result {
         host: host.to_string(),
         http,
         https,
         vulnerable,
         endpoints,
-    })
+    }
+}
+
+// Port reachability
+
+/// Result of the TCP pre-check.
+enum PortState {
+    /// At least one resolved address accepted the connection.
+    Open,
+    /// Every resolved address refused, filtered or timed out.
+    Closed,
+    /// The name could not be resolved at all.
+    Unresolved(String),
+}
+
+/// Test whether `host:port` accepts a TCP connection.
+///
+/// Run before the HTTP request so that "nothing is listening" can be reported as
+/// `NotVulnerable_PortInaccessible` rather than as a transport failure.
+fn check_port(host: &str, port: u16) -> PortState {
+    let addrs = match (host, port).to_socket_addrs() {
+        Ok(a) => a.collect::<Vec<_>>(),
+        Err(e) => {
+            return PortState::Unresolved(format!(
+                "DNS resolution failed for {}:{}: {}",
+                host, port, e
+            ));
+        }
+    };
+
+    if addrs.is_empty() {
+        return PortState::Unresolved(format!("no address resolved for {}:{}", host, port));
+    }
+
+    for addr in &addrs {
+        match TcpStream::connect_timeout(addr, TCP_CONNECT_TIMEOUT) {
+            Ok(_) => {
+                debug!("ESC8 port check {}:{} open ({})", host, port, addr);
+                return PortState::Open;
+            }
+            Err(e) => debug!("ESC8 port check {} unreachable: {}", addr, e),
+        }
+    }
+
+    PortState::Closed
 }
 
 // Internal probes
@@ -197,26 +351,40 @@ pub fn check_esc8(host: &str) -> Option<Esc8Result> {
 ///
 /// A `401` response carrying `WWW-Authenticate: NTLM` or `Negotiate` over HTTP
 /// is sufficient to flag ESC8, HTTP provides no channel-binding protection.
-fn probe_http(host: &str) -> WebEnrollmentStatus {
-    let url = format!("http://{}/certsrv/certfnsh.asp", host);
+///
+/// A `404` means IIS is up but web enrollment is not installed: the probe cannot
+/// conclude, so it is reported as not collected, like SharpHound does.
+fn probe_http(host: &str) -> ProbeOutcome {
+    let url = probe_url("http", host);
     debug!("ESC8 HTTP probe: {}", url);
 
+    match check_port(host, 80) {
+        PortState::Open => {}
+        PortState::Closed => return ProbeOutcome::PortClosed,
+        PortState::Unresolved(reason) => return ProbeOutcome::Failed(reason),
+    }
+
     let client = match Client::builder()
-        .timeout(Duration::from_secs(5))
-        .connect_timeout(Duration::from_secs(3))
+        .timeout(HTTP_TIMEOUT)
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
         .redirect(reqwest::redirect::Policy::limited(3))
         .build()
     {
         Ok(c) => c,
-        Err(_) => return WebEnrollmentStatus::NotFound,
+        Err(e) => {
+            return ProbeOutcome::Failed(format!("failed to build HTTP client for {}: {}", url, e));
+        }
     };
 
     let response = match client.head(&url).send() {
         Ok(r) => r,
-        Err(_) => return WebEnrollmentStatus::NotFound,
+        Err(e) => {
+            return ProbeOutcome::Failed(format!("HTTP request to {} failed: {}", url, e));
+        }
     };
 
-    let status = response.status().as_u16();
+    let status = response.status();
+    let code   = status.as_u16();
     let has_ntlm = response
         .headers()
         .get_all(WWW_AUTHENTICATE)
@@ -226,13 +394,28 @@ fn probe_http(host: &str) -> WebEnrollmentStatus {
             s.starts_with("ntlm") || s.starts_with("negotiate")
         });
 
-    debug!("ESC8 HTTP probe {}: status={} ntlm={}", host, status, has_ntlm);
+    debug!("ESC8 HTTP probe {}: status={} ntlm={}", host, code, has_ntlm);
 
-    if status == 401 && has_ntlm {
-        WebEnrollmentStatus::Vulnerable
-    } else {
-        WebEnrollmentStatus::NotFound
+    if code == 401 {
+        return if has_ntlm {
+            ProbeOutcome::Reached(WebEnrollmentStatus::Vulnerable)
+        } else {
+            // Authentication required but NTLM is not offered (Kerberos-only).
+            ProbeOutcome::Reached(WebEnrollmentStatus::NotFound)
+        };
     }
+
+    if status.is_success() || status.is_redirection() {
+        // Endpoint answers without requiring authentication: nothing to relay.
+        return ProbeOutcome::Reached(WebEnrollmentStatus::NotFound);
+    }
+
+    ProbeOutcome::Failed(format!(
+        "Response status code does not indicate success: {} ({}) for {}",
+        code,
+        status.canonical_reason().unwrap_or("Unknown"),
+        url
+    ))
 }
 
 /// Probe the HTTPS enrollment endpoint and check for EPA (Channel Binding).
@@ -240,37 +423,52 @@ fn probe_http(host: &str) -> WebEnrollmentStatus {
 /// Sends a minimal NTLM Type 1 Negotiate. If the server responds with a Type 2
 /// Challenge, parses the `TargetInfo` AvPairs to check for `MsvAvChannelBindings`.
 /// Absent: EPA disabled: relay possible.
-fn probe_https(host: &str) -> WebEnrollmentStatus {
-    let url = format!("https://{}/certsrv/certfnsh.asp", host);
+fn probe_https(host: &str) -> ProbeOutcome {
+    let url = probe_url("https", host);
     debug!("ESC8 HTTPS probe: {}", url);
+
+    match check_port(host, 443) {
+        PortState::Open => {}
+        PortState::Closed => return ProbeOutcome::PortClosed,
+        PortState::Unresolved(reason) => return ProbeOutcome::Failed(reason),
+    }
 
     let neg_b64    = b64_encode(NTLM_NEGOTIATE);
     let auth_value = format!("NTLM {}", neg_b64);
 
     let client = match Client::builder()
-        .timeout(Duration::from_secs(8))
-        .connect_timeout(Duration::from_secs(3))
+        .timeout(HTTPS_TIMEOUT)
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
         .danger_accept_invalid_certs(true)
         .build()
     {
         Ok(c) => c,
-        Err(_) => return WebEnrollmentStatus::NotFound,
+        Err(e) => {
+            return ProbeOutcome::Failed(format!("failed to build HTTPS client for {}: {}", url, e));
+        }
     };
 
-    let response = match client
-        .get(&url)
-        .header(AUTHORIZATION, &auth_value)
-        .send()
-    {
+    let response = match client.get(&url).header(AUTHORIZATION, &auth_value).send() {
         Ok(r) => r,
-        Err(_) => return WebEnrollmentStatus::NotFound,
+        Err(e) => {
+            return ProbeOutcome::Failed(format!("HTTPS request to {} failed: {}", url, e));
+        }
     };
 
-    let status = response.status().as_u16();
-    debug!("ESC8 HTTPS probe {}: status={}", host, status);
+    let status = response.status();
+    let code   = status.as_u16();
+    debug!("ESC8 HTTPS probe {}: status={}", host, code);
 
-    if status != 401 {
-        return WebEnrollmentStatus::NotFound;
+    if code != 401 {
+        if status.is_success() || status.is_redirection() {
+            return ProbeOutcome::Reached(WebEnrollmentStatus::NotFound);
+        }
+        return ProbeOutcome::Failed(format!(
+            "Response status code does not indicate success: {} ({}) for {}",
+            code,
+            status.canonical_reason().unwrap_or("Unknown"),
+            url
+        ));
     }
 
     // Find the NTLM Type 2 Challenge token in WWW-Authenticate headers
@@ -297,15 +495,15 @@ fn probe_https(host: &str) -> WebEnrollmentStatus {
                 "ESC8 HTTPS {}: no NTLM challenge received (Kerberos-only or not installed)",
                 host
             );
-            WebEnrollmentStatus::NotFound
+            ProbeOutcome::Reached(WebEnrollmentStatus::NotFound)
         }
         Some(token) => {
             if parse_epa_channel_bindings(&token) {
                 debug!("ESC8 HTTPS {}: MsvAvChannelBindings present: EPA enforced", host);
-                WebEnrollmentStatus::Protected
+                ProbeOutcome::Reached(WebEnrollmentStatus::Protected)
             } else {
                 debug!("ESC8 HTTPS {}: MsvAvChannelBindings absent: EPA disabled", host);
-                WebEnrollmentStatus::Vulnerable
+                ProbeOutcome::Reached(WebEnrollmentStatus::Vulnerable)
             }
         }
     }
@@ -557,20 +755,49 @@ mod tests {
         assert_eq!(b64_decode(""), Some(vec![]));
     }
 
-    // Network probe (non-routable, expected to return None)
+    // URL helpers
 
     #[test]
-    fn unreachable_host_returns_none() {
+    fn urls_match_sharphound_shape() {
+        assert_eq!(display_url("http", "ca.corp.local"), "http://ca.corp.local/certsrv/");
+        assert_eq!(
+            probe_url("https", "ca.corp.local"),
+            "https://ca.corp.local/certsrv/certfnsh.asp"
+        );
+    }
+
+    // Network probe (non-routable host)
+
+    /// Regression test for the empty `HttpEnrollmentEndpoints` bug: an
+    /// unreachable host must still produce two endpoints, and a closed port is a
+    /// result (`Collected: true`), not a collection failure.
+    #[test]
+    fn unreachable_host_reports_two_inaccessible_endpoints() {
         let result = check_esc8("192.0.2.1");
-        assert!(result.is_none(), "Non-routable host must return None");
+
+        assert_eq!(result.endpoints.len(), 2, "both endpoints must be reported");
+        assert!(!result.vulnerable, "non-routable host must not be flagged");
+        assert_eq!(result.http, WebEnrollmentStatus::NotFound);
+        assert_eq!(result.https, WebEnrollmentStatus::NotFound);
+
+        for ep in &result.endpoints {
+            assert!(ep.collected, "a closed port is collected data");
+            assert!(ep.failure_reason.is_none());
+            assert_eq!(ep.result.as_ref().unwrap().status, STATUS_NOT_VULN_PORT);
+        }
     }
 
     // WebEnrollmentEndpoint builders
 
     #[test]
     fn from_http_vulnerable() {
-        let ep = build_http_endpoint("ca.corp.local", true);
-        let r  = ep.result.as_ref().unwrap();
+        let ep = build_http_endpoint(
+            "ca.corp.local",
+            &ProbeOutcome::Reached(WebEnrollmentStatus::Vulnerable),
+        );
+        let r = ep.result.as_ref().unwrap();
+        assert_eq!(r.url, "http://ca.corp.local/certsrv/");
+        assert_eq!(r.enrollment_type, TYPE_WEB_ENROLLMENT);
         assert_eq!(r.status, STATUS_VULNERABLE_HTTP);
         assert!(r.adcs_web_enrollment_http);
         assert!(!r.adcs_web_enrollment_https);
@@ -580,17 +807,48 @@ mod tests {
     }
 
     #[test]
-    fn from_http_not_found() {
-        let ep = build_http_endpoint("ca.corp.local", false);
-        let r  = ep.result.as_ref().unwrap();
+    fn from_http_reached_but_not_exposed() {
+        let ep = build_http_endpoint(
+            "ca.corp.local",
+            &ProbeOutcome::Reached(WebEnrollmentStatus::NotFound),
+        );
+        let r = ep.result.as_ref().unwrap();
         assert_eq!(r.status, STATUS_NOT_VULN_PORT);
         assert!(!r.adcs_web_enrollment_http);
+        assert!(ep.collected);
+    }
+
+    /// Port 80 closed: reported as a result, mirroring SharpHound.
+    #[test]
+    fn from_http_port_closed() {
+        let ep = build_http_endpoint("ca.corp.local", &ProbeOutcome::PortClosed);
+        let r = ep.result.as_ref().unwrap();
+        assert_eq!(r.status, STATUS_NOT_VULN_PORT);
+        assert!(ep.collected);
+        assert!(ep.failure_reason.is_none());
+    }
+
+    /// Port open but IIS answered 404: web enrollment not installed, the probe
+    /// could not conclude, so nothing is collected.
+    #[test]
+    fn from_http_request_failed() {
+        let ep = build_http_endpoint(
+            "ca.corp.local",
+            &ProbeOutcome::Failed("Response status code does not indicate success: 404".into()),
+        );
+        assert!(ep.result.is_none());
+        assert!(!ep.collected);
+        assert!(ep.failure_reason.as_ref().unwrap().contains("404"));
     }
 
     #[test]
     fn from_https_vulnerable() {
-        let ep = build_https_endpoint("ca.corp.local", &WebEnrollmentStatus::Vulnerable);
-        let r  = ep.result.as_ref().unwrap();
+        let ep = build_https_endpoint(
+            "ca.corp.local",
+            &ProbeOutcome::Reached(WebEnrollmentStatus::Vulnerable),
+        );
+        let r = ep.result.as_ref().unwrap();
+        assert_eq!(r.url, "https://ca.corp.local/certsrv/");
         assert_eq!(r.status, STATUS_VULNERABLE_HTTPS);
         assert!(!r.adcs_web_enrollment_http);
         assert!(r.adcs_web_enrollment_https);
@@ -599,19 +857,34 @@ mod tests {
 
     #[test]
     fn from_https_protected() {
-        let ep = build_https_endpoint("ca.corp.local", &WebEnrollmentStatus::Protected);
-        let r  = ep.result.as_ref().unwrap();
+        let ep = build_https_endpoint(
+            "ca.corp.local",
+            &ProbeOutcome::Reached(WebEnrollmentStatus::Protected),
+        );
+        let r = ep.result.as_ref().unwrap();
         assert_eq!(r.status, STATUS_NOT_VULN_EPA);
         assert!(r.adcs_web_enrollment_https);
         assert!(r.adcs_web_enrollment_epa);
     }
 
     #[test]
-    fn from_https_not_found() {
-        let ep = build_https_endpoint("ca.corp.local", &WebEnrollmentStatus::NotFound);
-        let r  = ep.result.as_ref().unwrap();
+    fn from_https_port_closed() {
+        let ep = build_https_endpoint("ca.corp.local", &ProbeOutcome::PortClosed);
+        let r = ep.result.as_ref().unwrap();
         assert_eq!(r.status, STATUS_NOT_VULN_PORT);
         assert!(!r.adcs_web_enrollment_https);
         assert!(!r.adcs_web_enrollment_epa);
+        assert!(ep.collected);
+    }
+
+    #[test]
+    fn from_https_request_failed() {
+        let ep = build_https_endpoint(
+            "ca.corp.local",
+            &ProbeOutcome::Failed("TLS handshake failed".into()),
+        );
+        assert!(ep.result.is_none());
+        assert!(!ep.collected);
+        assert!(ep.failure_reason.as_ref().unwrap().contains("TLS handshake failed"));
     }
 }

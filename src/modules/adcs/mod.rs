@@ -1,7 +1,7 @@
 //! ADCS active modules, ESC8 web enrollment probe.
 //!
 //! Exposes `probe_enterpriseca_esc8`, called from `run_modules` after LDAP
-//! collection, once per EnterpriseCA, in parallel via rayon.
+//! collection, once per EnterpriseCA, on Tokio's blocking thread pool.
 
 pub mod esc8;
 
@@ -30,14 +30,15 @@ impl From<Esc8Result> for Esc8Data {
 // Public API
 
 /// Probe web enrollment endpoints for a single Enterprise CA.
-/// Returns default (empty) if `dns_host` is empty or unreachable.
+///
+/// Always returns two endpoints, including when the host is unreachable: a
+/// negative probe is reported, not dropped. Returns the empty default only when
+/// `dns_host` is empty, since there is no URL to build in that case.
 /// DCOnly guard is handled by the caller (`run_modules`).
 pub fn probe_enterpriseca_esc8(dns_host: &str) -> Esc8Data {
     if dns_host.is_empty() {
+        log::debug!("[adcs] ESC8 probe skipped: CA has no dnshostname");
         return Esc8Data::default();
     }
-    match check_esc8(dns_host) {
-        Some(result) => Esc8Data::from(result),
-        None         => Esc8Data::default(),
-    }
+    Esc8Data::from(check_esc8(dns_host))
 }
