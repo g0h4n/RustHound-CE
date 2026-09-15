@@ -28,9 +28,6 @@
 
 ### Compatibility with SharpHound
 
-Attribute-by-attribute comparison between `rusthound-ce v2.5.13` and `SharpHound v2.16.0.0`,
-measured on the same domain on `2026-09-15`. Counts every checkbox of the [List of attributes](#list-of-attributes) section, including nested sub-fields.
-
 Attribute-by-attribute comparison between `rusthound-ce` and `SharpHound v2.16.0.0`,
 measured on the same domain on `2026-09-15`, `rusthound-ce` side updated after the
 ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)). Counts every
@@ -39,26 +36,26 @@ sub-fields.
 
 | Object | Attributes | :white_check_mark: Implemented | :red_circle: Missing | Compatibility |
 | :--- | ---: | ---: | ---: | :--- |
-| CertTemplate | 47 | 40 | 7 | `█████████░` 85.1% |
-| Domain | 55 | 46 | 9 | `████████░░` 83.6% |
-| OU | 34 | 28 | 6 | `████████░░` 82.4% |
-| RootCA | 28 | 23 | 5 | `████████░░` 82.1% |
-| User | 70 | 56 | 14 | `████████░░` 80.0% |
-| Gpo | 25 | 20 | 5 | `████████░░` 80.0% |
-| AIACA | 30 | 24 | 6 | `████████░░` 80.0% |
-| NtAuthStore | 24 | 19 | 5 | `████████░░` 79.2% |
-| Container | 26 | 20 | 6 | `████████░░` 76.9% |
-| Group | 32 | 22 | 10 | `███████░░░` 68.8% |
-| EnterpriseCA | 70 | 45 | 25 | `██████░░░░` 64.3% |
-| IssuancePolicies | 27 | 17 | 10 | `██████░░░░` 63.0% |
-| Computer | 119 | 59 | 60 | `█████░░░░░` 49.6% |
-| **Total** | **587** | **419** | **168** | **`███████░░░` 71.4%** |
+| CertTemplate | 47 | 39 | 8 | `████████░░` 83.0% |
+| Domain | 55 | 45 | 10 | `████████░░` 81.8% |
+| OU | 34 | 27 | 7 | `████████░░` 79.4% |
+| RootCA | 28 | 22 | 6 | `████████░░` 78.6% |
+| User | 70 | 55 | 15 | `████████░░` 78.6% |
+| AIACA | 30 | 23 | 7 | `████████░░` 76.7% |
+| Gpo | 25 | 19 | 6 | `████████░░` 76.0% |
+| NtAuthStore | 24 | 18 | 6 | `████████░░` 75.0% |
+| Container | 26 | 19 | 7 | `███████░░░` 73.1% |
+| Group | 32 | 21 | 11 | `███████░░░` 65.6% |
+| EnterpriseCA | 70 | 43 | 27 | `██████░░░░` 61.4% |
+| IssuancePolicies | 27 | 16 | 11 | `██████░░░░` 59.3% |
+| Computer | 119 | 58 | 61 | `█████░░░░░` 48.7% |
+| **Total** | **587** | **405** | **182** | **`███████░░░` 69.0%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
 > `Computer` is pulled down by `LocalGroups`, `NTLMRegistryData`, `SmbInfo`,
 > `IsWebClientRunning` and `DCRegistryData`; `EnterpriseCA` by `CARegistryData`.
 > Those 55 attributes are all unimplemented and require RPC/SMB access to the
-> hosts; excluding them, coverage rises
+> hosts; excluding them, coverage rises to 76.1% (405 / 532).
 
 ## Authentification
   - [x] LDAP (389) :white_check_mark:
@@ -148,7 +145,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -268,7 +265,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -340,7 +337,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -374,7 +371,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -410,7 +407,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -437,7 +434,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -465,7 +462,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -494,7 +491,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -520,7 +517,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -552,7 +549,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -582,7 +579,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -654,7 +651,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
@@ -703,7 +700,7 @@ sub-fields.
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
-- [x] `Aces`:`InheritanceHash` :white_check_mark:
+- [ ] `Aces`:`InheritanceHash` :red_circle:
 - [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
 - [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
 - [x] `ObjectIdentifier` :white_check_mark:
