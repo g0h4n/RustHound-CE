@@ -135,27 +135,24 @@ impl User {
                 "unixUserPassword" => {
                     self.properties.unixpassword = value[0].to_owned();
                 }
-                "unicodepwd" => {
+                "unicodePwd" => {
                     self.properties.unicodepassword = value[0].to_owned();
                 }
-                "sfupassword" => {
+                "msSFU30Password" => {
                     //self.properties.sfupassword = value[0].to_owned();
                 }
                 "displayName" => {
                     self.properties.displayname = value[0].to_owned();
                 }
                 "adminCount" => {
-                    let isadmin = &value[0];
-                    let mut admincount = false;
-                    if isadmin =="1" {
-                        admincount = true;
-                    }
+                    let admincount = value[0].parse::<i32>().unwrap_or(0) != 0;
                     self.properties.admincount = admincount;
+                    self.properties.adminsdholderprotected = admincount;
                 }
                 "homeDirectory" => {
                     self.properties.homedirectory = value[0].to_owned();
                 }
-                "scriptpath" => {
+                "scriptPath" => {
                     self.properties.logonscript = value[0].to_owned();
                 }
                 "profilePath" | "profilepath" => {
@@ -194,7 +191,29 @@ impl User {
                         if flag.contains("TrustedToAuthForDelegation") {
                             self.properties.trustedtoauth = true;
                         };
+                        if flag.contains("SmartcardRequired") {
+                            self.properties.smartcardrequired = true;
+                        };
+                        if flag.contains("UseDesKeyOnly") {
+                            self.properties.usedeskeyonly = true;
+                        };
+                        if flag.contains("EncryptedTextPwdAllowed") {
+                            self.properties.encryptedtextpwdallowed = true;
+                        };
+                        if flag.contains("Script") {
+                            self.properties.logonscriptenabled = true;
+                        };
                     }
+                }
+                "msDS-User-Account-Control-Computed" => {
+                    // Constructed attribute: UF_LOCKOUT and UF_PASSWORD_EXPIRED live
+                    // here, not in userAccountControl. Computed by the DC we query,
+                    // so lockedout reflects that DC's view only.
+                    const UF_LOCKOUT: u32 = 0x0000_0010;
+                    const UF_PASSWORD_EXPIRED: u32 = 0x0080_0000;
+                    let computed = value[0].parse::<u32>().unwrap_or(0);
+                    self.properties.lockedout = computed & UF_LOCKOUT != 0;
+                    self.properties.passwordexpired = computed & UF_PASSWORD_EXPIRED != 0;
                 }
                 "msDS-AllowedToDelegateTo" => {
                     let mut vec_members2: Vec<Member> = Vec::new();
@@ -498,6 +517,13 @@ pub struct UserProperties {
     sfupassword: String,
     profilepath: String,
     admincount: bool,
+    adminsdholderprotected: bool,
+    smartcardrequired: bool,
+    usedeskeyonly: bool,
+    encryptedtextpwdallowed: bool,
+    logonscriptenabled: bool,
+    lockedout: bool,
+    passwordexpired: bool,
     supportedencryptiontypes: Vec<String>,
     sidhistory: Vec<String>,
     allowedtodelegate: Vec<String>
