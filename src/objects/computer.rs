@@ -530,6 +530,10 @@ impl LdapObject for Computer {
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 // Computer properties structure
@@ -540,6 +544,8 @@ pub struct ComputerProperties {
     distinguishedname: String,
     domainsid: String,
     objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
     isaclprotected: bool,
     highvalue: bool,
     samaccountname: String,

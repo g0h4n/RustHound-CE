@@ -251,25 +251,31 @@ impl LdapObject for RootCA {
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 
 // RootCA properties structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RootCAProperties {
-   domain: String,
-   name: String,
-   distinguishedname: String,
-   domainsid: String,
-   objectguid: String,
-   isaclprotected: bool,
-   description: Option<String>,
-   whencreated: i64,
-   certthumbprint: String,
-   certname: String,
-   certchain: Vec<String>,
-   hasbasicconstraints: bool,
-   basicconstraintpathlength: u32,
+    domain: String,
+    name: String,
+    distinguishedname: String,
+    domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
+    isaclprotected: bool,
+    description: Option<String>,
+    whencreated: i64,
+    certthumbprint: String,
+    certname: String,
+    certchain: Vec<String>,
+    hasbasicconstraints: bool,
+    basicconstraintpathlength: u32,
 }
 
 impl Default for RootCAProperties {
@@ -280,6 +286,8 @@ impl Default for RootCAProperties {
             distinguishedname: String::from(""),
             domainsid: String::from(""),
             objectguid: String::from(""),
+            doesanyacegrantownerrights: false,
+            doesanyinheritedacegrantownerrights: false,
             isaclprotected: false,
             description: None,
             whencreated: -1,

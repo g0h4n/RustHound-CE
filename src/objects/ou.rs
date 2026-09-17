@@ -227,6 +227,10 @@ impl LdapObject for Ou {
     fn set_child_objects(&mut self, child_objects: Vec<Member>) {
         self.child_objects = child_objects
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 // Ou properties structure
@@ -237,6 +241,8 @@ pub struct OuProperties {
     distinguishedname: String,
     domainsid: String,
     objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
     isaclprotected: bool,
     highvalue: bool,
     description: Option<String>,
@@ -253,7 +259,7 @@ impl OuProperties {
         &self.distinguishedname
     }
 
-
+    // Mutable access.
     pub fn isaclprotected_mut(&mut self) -> &mut bool {
         &mut self.isaclprotected
     }

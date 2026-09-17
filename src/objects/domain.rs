@@ -318,6 +318,10 @@ impl LdapObject for Domain {
     fn set_child_objects(&mut self, child_objects: Vec<Member>) {
         self.child_objects = child_objects
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 // Domain properties structure
@@ -377,10 +381,6 @@ impl DomainProperties {
     }
     pub fn netbios_mut(&mut self) -> &mut String {
         &mut self.netbios
-    }
-    pub fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
-        self.doesanyacegrantownerrights = any;
-        self.doesanyinheritedacegrantownerrights = any_inherited;
     }
 }
 

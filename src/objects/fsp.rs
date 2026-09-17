@@ -144,15 +144,17 @@ impl Fsp {
 /// Default FSP properties structure
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct FspProperties {
-   domain: String,
-   name: String,
-   distinguishedname: String,
-   domainsid: String,
-   objectguid: String,
-   isaclprotected: bool,
-   highvalue: bool,
-   description: Option<String>,
-   whencreated: i64,
+    domain: String,
+    name: String,
+    distinguishedname: String,
+    domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
+    isaclprotected: bool,
+    highvalue: bool,
+    description: Option<String>,
+    whencreated: i64,
 }
 
 impl FspProperties {
@@ -279,5 +281,9 @@ impl LdapObject for Fsp {
     }
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
+    }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
     }
 }

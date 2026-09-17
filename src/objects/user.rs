@@ -478,6 +478,10 @@ impl LdapObject for User {
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 /// User properties structure
@@ -487,6 +491,8 @@ pub struct UserProperties {
     name: String,
     domainsid: String,
     objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
     isaclprotected: bool,
     distinguishedname: String,
     highvalue: bool,
@@ -526,7 +532,7 @@ pub struct UserProperties {
     passwordexpired: bool,
     supportedencryptiontypes: Vec<String>,
     sidhistory: Vec<String>,
-    allowedtodelegate: Vec<String>
+    allowedtodelegate: Vec<String>,
 }
 
 impl UserProperties {
