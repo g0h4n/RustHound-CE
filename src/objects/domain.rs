@@ -83,14 +83,6 @@ impl Domain {
         &mut self.inheritance_hashes
     }
 
-    /// Set the forest root SID, read from the RootDSE `rootDomainNamingContext`.
-    ///
-    /// On a single-domain forest this equals `domainsid`, but it must be
-    /// resolved rather than aliased: in a multi-domain forest the two differ.
-    pub fn set_forest_root_identifier(&mut self, sid: impl Into<String>) {
-        self.forest_root_identifier = Some(sid.into());
-    }
-
     /// Function to parse and replace value for domain object.
     /// <https://bloodhound.readthedocs.io/en/latest/further-reading/json.html#domains>
     pub fn parse(
@@ -450,19 +442,5 @@ mod tests {
             domain.to_json()["Properties"]["objectguid"],
             "F77BEC58-73A7-408D-AF0D-42F0D72C7114"
         );
-    }
-
-    #[test]
-    fn forest_root_and_netbios_serialize() {
-        let mut domain = Domain::new();
-        domain.set_forest_root_identifier("S-1-5-21-3600700137-3291257795-828247845");
-        *domain.properties_mut().netbios_mut() = "ESSOS".to_string();
-        domain.properties_mut().set_owner_rights_flags(false, false);
-
-        let json = domain.to_json();
-        assert_eq!(json["ForestRootIdentifier"], "S-1-5-21-3600700137-3291257795-828247845");
-        assert_eq!(json["Properties"]["netbios"], "ESSOS");
-        assert_eq!(json["Properties"]["doesanyacegrantownerrights"], false);
-        assert_eq!(json["InheritanceHashes"], serde_json::json!([]));
     }
 }
