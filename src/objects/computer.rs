@@ -165,6 +165,16 @@ impl Computer {
                 "description" => {
                     self.properties.description = Some(value[0].to_owned());
                 }
+                "adminCount" => {
+                    // A non-zero adminCount means the object is (or was) in a
+                    // protected group, so AdminSDHolder owns its DACL.
+                    let admin_count = value[0].parse::<i32>().unwrap_or(0) != 0;
+                    self.properties.admincount = admin_count;
+                    self.properties.adminsdholderprotected = admin_count;
+                }
+                "mail" => {
+                    self.properties.email = value[0].to_owned();
+                }
                 "operatingSystem" => {
                     self.properties.operatingsystem = value[0].to_owned();
                 }
@@ -222,14 +232,33 @@ impl Computer {
                 }
                 "userAccountControl" => {
                     //userAccountControl
-                    let uac = &value[0].parse::<u32>().unwrap();
-                    let uac_flags = get_flag(*uac);
+                    let uac = value[0].parse::<u32>().unwrap_or(0);
+                    self.properties.useraccountcontrol = uac;
+
+                    let uac_flags = get_flag(uac);
                     //trace!("UAC : {:?}",uac_flags);
                     for flag in uac_flags {
                         if flag.contains("AccountDisable") {
                             self.properties.enabled = false;
                         };
-                        //if flag.contains("Lockout") { let enabled = true; computer_json["Properties"]["enabled"] = enabled; };
+                        if flag.contains("Lockout") {
+                            self.properties.lockedout = true;
+                        };
+                        if flag.contains("Script") {
+                            self.properties.logonscriptenabled = true;
+                        };
+                        if flag.contains("EncryptedTextPwdAllowed") {
+                            self.properties.encryptedtextpwdallowed = true;
+                        };
+                        if flag.contains("UseDesKeyOnly") {
+                            self.properties.usedeskeyonly = true;
+                        };
+                        if flag.contains("PasswordExpired") {
+                            self.properties.passwordexpired = true;
+                        };
+                        if flag.contains("PartialSecretsAccount") {
+                            self.properties.isreadonlydc = true;
+                        };
                         // KUD (Kerberos Unconstrained Delegation)
                         if flag.contains("TrustedForDelegation") {
                             self.properties.unconstraineddelegation = true;
@@ -241,10 +270,11 @@ impl Computer {
                         if flag.contains("PasswordNotRequired") {
                             self.properties.passwordnotreqd = true;
                         };
-                         if flag.contains("DontExpirePassword") {
+                        if flag.contains("DontExpirePassword") {
                             self.properties.pwdneverexpires = true;
                         };
                         if flag.contains("ServerTrustAccount") {
+                            self.properties.isdc = true;
                             self.properties.is_dc = true;
                             self.is_dc = true;
                         }
@@ -528,6 +558,17 @@ pub struct ComputerProperties {
     operatingsystem: String,
     sidhistory: Vec<String>,
     supportedencryptiontypes: Vec<String>,
+    useraccountcontrol: u32,
+    isdc: bool,
+    isreadonlydc: bool,
+    admincount: bool,
+    adminsdholderprotected: bool,
+    lockedout: bool,
+    passwordexpired: bool,
+    usedeskeyonly: bool,
+    encryptedtextpwdallowed: bool,
+    logonscriptenabled: bool,
+    email: String,
     #[serde(skip_serializing)]
     is_dc: bool
 }
