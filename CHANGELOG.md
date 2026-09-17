@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.5.14 - 2026-09-17
+
+### Fixed
+- ESC8 web enrollment probe always returned an empty `HttpEnrollmentEndpoints` array ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)). Both endpoints are now reported, and a closed port is distinguished from a failed request.
+- `adminCount` is read as an integer instead of being compared to `"1"`.
+- `lockedout` and `passwordexpired` are read from `msDS-User-Account-Control-Computed`, where the bits actually live.
+
+### Added
+- `objectguid` on every object type
+- OWNER RIGHTS (`S-1-3-4`) detection: `doesanyacegrantownerrights`, `doesanyinheritedacegrantownerrights` and the two matching per-ACE flags
+- Computer: `useraccountcontrol`, `isdc`, `isreadonlydc`, `admincount`, `adminsdholderprotected`, `lockedout`, `passwordexpired`, `usedeskeyonly`, `encryptedtextpwdallowed`, `logonscriptenabled`, `email`
+- User: `adminsdholderprotected`, `lockedout`, `passwordexpired`, `smartcardrequired`, `usedeskeyonly`, `encryptedtextpwdallowed`, `logonscriptenabled`
+- Group: `groupscope`, `sidhistory`, `HasSIDHistory`, `adminsdholderprotected`
+
+### Changed
+- `ROADMAP.md` rewritten with a per-object compatibility table against SharpHound `v2.16.0.0`. Coverage: 84.3% (495 / 587).
+
 ## 2.5.13 - 2026-09-10
 
 Expose RustHound-CE as a reusable Rust library. `ldap_search` is split into two composable entry points: `ldap_auth(options)` authenticates (simple bind, pass-the-hash, Kerberos, or certificate) and returns a ready `ldap3::Ldap` session, and `run_collection(ldap, options)` runs the full workflow (collect, parse, modules, JSON/zip) over that session and returns the output path. Both return `Err` instead of calling `process::exit`, and `run_collection` never unbinds the session, so a caller can bring its own authenticated connection. The CLI behaviour is unchanged. See [INTEGRATION.md](INTEGRATION.md).

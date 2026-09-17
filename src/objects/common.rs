@@ -415,12 +415,6 @@ impl AceTemplate {
    pub fn inheritance_hash_mut(&mut self) -> &mut String {
       &mut self.inheritance_hash
    }
-
-   /// Set both OWNER RIGHTS flags from the trustee SID check.
-   pub(crate) fn set_owner_rights_flags(&mut self, is_owner_rights: bool) {
-      self.is_permission_for_owner_rights_sid = is_owner_rights;
-      self.is_inherited_permission_for_owner_rights_sid = is_owner_rights && self.is_inherited;
-   }
 }
 
 /// Link structure
