@@ -47,15 +47,15 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 | Container | 26 | 20 | 6 | `████████░░` 76.9% |
 | Group | 32 | 22 | 10 | `███████░░░` 68.8% |
 | IssuancePolicies | 27 | 17 | 10 | `██████░░░░` 63.0% |
-| EnterpriseCA | 70 | 44 | 26 | `██████░░░░` 62.9% |
-| Computer | 119 | 59 | 60 | `█████░░░░░` 49.6% |
-| **Total** | **587** | **418** | **169** | **`███████░░░` 71.2%** |
+| EnterpriseCA | 70 | 45 | 25 | `██████░░░░` 64.3% |
+| Computer | 119 | 70 | 49 | `██████░░░░` 58.8% |
+| **Total** | **587** | **430** | **157** | **`███████░░░` 73.3%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
 > `Computer` is pulled down by `LocalGroups`, `NTLMRegistryData`, `SmbInfo`,
 > `IsWebClientRunning` and `DCRegistryData`; `EnterpriseCA` by `CARegistryData`.
 > Those 55 attributes are all unimplemented and require RPC/SMB access to the
-> hosts; excluding them, coverage rises to 78.6% (418 / 532).
+> hosts; excluding them, coverage rises to 80.6% (429 / 532).
 
 ## Authentification
   - [x] LDAP (389) :white_check_mark:
@@ -92,7 +92,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [ ] Remote registry collection (`NTLMRegistryData`, `DCRegistryData`, `CARegistryData`) :red_circle: :new:
 - [ ] SMB signing probe (`SmbInfo`) :red_circle: :new:
 - [ ] WebClient/WebDAV service probe (`IsWebClientRunning`, prerequisite for ESC8 / coercion paths) :red_circle: :new:
-- [x] HTTP enrollment endpoints probe (`HttpEnrollmentEndpoints`, ADCS web enrollment over HTTP/HTTPS/EPA) :red_circle: :new:
+- [x] HTTP enrollment endpoints probe (`HttpEnrollmentEndpoints`, ADCS web enrollment over HTTP/HTTPS/EPA) :white_check_mark:
 
 ## List of attributes
 
@@ -101,7 +101,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -158,7 +158,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -179,17 +179,17 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`operatingsystem` :white_check_mark:
 - [x] `Properties`:`supportedencryptiontypes` :white_check_mark:
 - [x] `Properties`:`sidhistory` :white_check_mark:
-- [ ] `Properties`:`useraccountcontrol` :red_circle: :new:
-- [ ] `Properties`:`isdc` :red_circle: :new: (`IsDC` is emitted at node level, but not as a property)
-- [ ] `Properties`:`isreadonlydc` :red_circle: :new:
-- [ ] `Properties`:`admincount` :red_circle: :new:
-- [ ] `Properties`:`adminsdholderprotected` :red_circle: :new:
-- [ ] `Properties`:`lockedout` :red_circle: :new:
-- [ ] `Properties`:`passwordexpired` :red_circle: :new:
-- [ ] `Properties`:`usedeskeyonly` :red_circle: :new:
-- [ ] `Properties`:`encryptedtextpwdallowed` :red_circle: :new:
-- [ ] `Properties`:`logonscriptenabled` :red_circle: :new:
-- [ ] `Properties`:`email` :red_circle: :new:
+- [x] `Properties`:`useraccountcontrol` :white_check_mark:
+- [x] `Properties`:`isdc` :white_check_mark:
+- [x] `Properties`:`isreadonlydc` :white_check_mark:
+- [x] `Properties`:`admincount` :white_check_mark:
+- [x] `Properties`:`adminsdholderprotected` :white_check_mark: (derived from `adminCount`, matches SharpHound on the test domain)
+- [x] `Properties`:`lockedout` :white_check_mark:
+- [x] `Properties`:`passwordexpired` :white_check_mark:
+- [x] `Properties`:`usedeskeyonly` :white_check_mark:
+- [x] `Properties`:`encryptedtextpwdallowed` :white_check_mark:
+- [x] `Properties`:`logonscriptenabled` :white_check_mark:
+- [x] `Properties`:`email` :white_check_mark:
 - [ ] `Properties`:`ldapavailable` :red_circle: :new:
 - [ ] `Properties`:`ldapsavailable` :red_circle: :new:
 - [ ] `Properties`:`ldapsigning` :red_circle: :new:
@@ -279,7 +279,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -317,7 +317,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [ ] `Properties`:`adminsdholderprotected` :red_circle: :new:
 - [ ] `Properties`:`lockedout` :red_circle: :new:
 - [ ] `Properties`:`passwordexpired` :red_circle: :new:
-- [ ] `Properties`:`passwordcantchange` :red_circle: :new:
+- [ ] `Properties`:`passwordcantchange` :red_circle: :new: (not exposed in `userAccountControl`, verified on ESSOS; lives in the DACL as two denied `Change Password` ACEs)
 - [ ] `Properties`:`smartcardrequired` :red_circle: :new:
 - [ ] `Properties`:`usedeskeyonly` :red_circle: :new:
 - [ ] `Properties`:`encryptedtextpwdallowed` :red_circle: :new:
@@ -351,7 +351,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -385,7 +385,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -421,7 +421,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -448,7 +448,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -476,7 +476,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -505,7 +505,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -531,7 +531,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -563,7 +563,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -593,7 +593,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
@@ -665,7 +665,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark:
 - [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
 - [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
