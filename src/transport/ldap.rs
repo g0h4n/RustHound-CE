@@ -196,7 +196,7 @@ pub(crate) async fn collect_from_ldap_into<S: Storage<LdapSearchEntry>>(
                 cn,
                 Scope::Subtree,
                 ldapfilter,
-                vec!["*", "nTSecurityDescriptor"],
+                vec!["*", "nTSecurityDescriptor", "msDS-User-Account-Control-Computed"],
             )
             .await?;
 

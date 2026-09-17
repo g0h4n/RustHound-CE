@@ -6,6 +6,7 @@ use log::{info, debug, trace};
 use std::collections::HashMap;
 use std::error::Error;
 
+use crate::enums::decode_guid_le;
 use crate::enums::regex::OBJECT_SID_RE1;
 use crate::objects::common::{LdapObject, GPOChange, Link, AceTemplate, SPNTarget, Member};
 use crate::objects::trust::Trust;
@@ -29,6 +30,10 @@ pub struct Domain {
     trusts: Vec<Trust>,
     #[serde(rename = "Links")]
     links: Vec<Link>,
+    #[serde(rename = "InheritanceHashes")]
+    inheritance_hashes: Vec<String>,
+    #[serde(rename = "ForestRootIdentifier")]
+    forest_root_identifier: Option<String>,
     #[serde(rename = "Aces")]
     aces: Vec<AceTemplate>,
     #[serde(rename = "ObjectIdentifier")]
@@ -54,6 +59,12 @@ impl Domain {
     pub fn properties(&self) -> &DomainProperties { 
         &self.properties
     }
+    pub fn inheritance_hashes(&self) -> &Vec<String> {
+        &self.inheritance_hashes
+    }
+    pub fn forest_root_identifier(&self) -> &Option<String> {
+        &self.forest_root_identifier
+    }
 
     // Mutable access.
     pub fn properties_mut(&mut self) -> &mut DomainProperties {
@@ -67,6 +78,9 @@ impl Domain {
     }
     pub fn trusts_mut(&mut self) -> &mut Vec<Trust> {
         &mut self.trusts
+    }
+    pub fn inheritance_hashes_mut(&mut self) -> &mut Vec<String> {
+        &mut self.inheritance_hashes
     }
 
     /// Function to parse and replace value for domain object.
@@ -183,6 +197,11 @@ impl Domain {
         // For all, bins attributes
         for (key, value) in &result_bin {
             match key.as_str() {
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.properties.objectguid = guid;
+                }
                 "objectSid" => {
                     // objectSid raw to string
                     sid = sid_maker(LdapSid::parse(&value[0]).unwrap().1, domain_name);
@@ -299,6 +318,10 @@ impl LdapObject for Domain {
     fn set_child_objects(&mut self, child_objects: Vec<Member>) {
         self.child_objects = child_objects
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 // Domain properties structure
@@ -308,7 +331,11 @@ pub struct DomainProperties {
     name: String,
     distinguishedname: String,
     domainsid: String,
+    objectguid: String,
+    netbios: String,
     isaclprotected: bool,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
     highvalue: bool,
     description: Option<String>,
     whencreated: i64,
@@ -332,6 +359,12 @@ impl DomainProperties {
     pub fn distinguishedname(&self) -> &String {
         &self.distinguishedname
     }
+    pub fn objectguid(&self) -> &String {
+        &self.objectguid
+    }
+    pub fn netbios(&self) -> &String {
+        &self.netbios
+    }
 
     // Mutable access.
     pub fn domain_mut(&mut self) -> &mut String {
@@ -345,6 +378,9 @@ impl DomainProperties {
     }
     pub fn distinguishedname_mut(&mut self) -> &mut String {
         &mut self.distinguishedname
+    }
+    pub fn netbios_mut(&mut self) -> &mut String {
+        &mut self.netbios
     }
 }
 
@@ -379,5 +415,32 @@ mod tests {
 
         assert_eq!(domain.properties.dsheuristics, "0000000001000001");
         assert_eq!(domain.to_json()["Properties"]["dsheuristics"], "0000000001000001");
+    }
+
+    #[test]
+    fn parse_fills_object_guid_from_bin_attrs() {
+        let mut domain = Domain::new();
+        let raw = vec![
+            0x58, 0xEC, 0x7B, 0xF7, 0xA7, 0x73, 0x8D, 0x40,
+            0xAF, 0x0D, 0x42, 0xF0, 0xD7, 0x2C, 0x71, 0x14,
+        ];
+        let result = SearchEntry {
+            dn: "DC=example,DC=local".to_string(),
+            attrs: HashMap::new(),
+            bin_attrs: HashMap::from([("objectGUID".to_string(), vec![raw])]),
+        };
+        let mut dn_sid = HashMap::new();
+        let mut sid_type = HashMap::new();
+        let schema_guid_map = HashMap::new();
+
+        domain
+            .parse(result, "example.local", &mut dn_sid, &mut sid_type, &schema_guid_map)
+            .unwrap();
+
+        assert_eq!(domain.properties.objectguid, "F77BEC58-73A7-408D-AF0D-42F0D72C7114");
+        assert_eq!(
+            domain.to_json()["Properties"]["objectguid"],
+            "F77BEC58-73A7-408D-AF0D-42F0D72C7114"
+        );
     }
 }

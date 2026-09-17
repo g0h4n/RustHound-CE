@@ -5,6 +5,7 @@ use log::{debug, trace};
 use std::collections::HashMap;
 use std::error::Error;
 
+use crate::enums::{decode_guid_le, group_scope};
 use crate::enums::regex::OBJECT_SID_RE1;
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::enums::acl::parse_ntsecuritydescriptor;
@@ -25,6 +26,8 @@ pub struct Group {
     properties: GroupProperties,
     #[serde(rename = "Members")]
     members: Vec<Member>,
+    #[serde(rename = "HasSIDHistory")]
+    has_sid_history: Vec<String>,
     #[serde(rename = "Aces")]
     aces: Vec<AceTemplate>,
     #[serde(rename = "ContainedBy")]
@@ -102,12 +105,15 @@ impl Group {
                     self.properties.description = Some(value[0].to_owned());
                 }
                 "adminCount" => {
-                    let isadmin = &value[0];
-                    let mut admincount = false;
-                    if isadmin == "1" {
-                        admincount = true;
-                    }
+                    // adminCount is not limited to 1: any non-zero value means
+                    // the object is (or was) in a protected group, so
+                    // AdminSDHolder owns its DACL.
+                    let admincount = value[0].parse::<i32>().unwrap_or(0) != 0;
                     self.properties.admincount = admincount;
+                    self.properties.adminsdholderprotected = admincount;
+                }
+                "groupType" => {
+                    self.properties.groupscope = group_scope(value[0].parse::<i64>().unwrap_or(0));
                 }
                 "sAMAccountName" => {
                     self.properties.samaccountname = value[0].to_owned();
@@ -179,6 +185,11 @@ impl Group {
         // For all, bins attributs
         for (key, value) in &result_bin {
             match key.as_str() {
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.properties.objectguid = guid;
+                }
                 "objectSid" => {
                     // objectSid raw to string
                     let sid = sid_maker(LdapSid::parse(&value[0]).unwrap().1, domain);
@@ -220,6 +231,15 @@ impl Group {
                         schema_guid_map,
                     );
                     self.aces = relations_ace;
+                }
+                "sIDHistory" => {
+                    let mut list_sid_history: Vec<String> = Vec::new();
+                    for bsid in value {
+                        debug!("sIDHistory: {:?}", &bsid);
+                        list_sid_history.push(sid_maker(LdapSid::parse(bsid).unwrap().1, domain));
+                    }
+                    self.properties.sidhistory = list_sid_history.clone();
+                    self.has_sid_history = list_sid_history;
                 }
                 _ => {}
             }
@@ -311,6 +331,10 @@ impl LdapObject for Group {
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 // Group properties structure
@@ -320,12 +344,18 @@ pub struct GroupProperties {
     name: String,
     distinguishedname: String,
     domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
     isaclprotected: bool,
     highvalue: bool,
     samaccountname: String,
     description: Option<String>,
     whencreated: i64,
     admincount: bool,
+    adminsdholderprotected: bool,
+    groupscope: String,
+    sidhistory: Vec<String>,
 }
 
 impl GroupProperties {
@@ -346,5 +376,22 @@ impl GroupProperties {
     }
     pub fn highvalue_mut(&mut self) -> &mut bool {
         &mut self.highvalue
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn group_type_maps_to_bloodhound_scope() {
+        // groupType is a signed 32-bit value; security groups carry 0x80000000.
+        assert_eq!(group_scope(-2147483646), "Global");      // security, global
+        assert_eq!(group_scope(-2147483643), "DomainLocal"); // security, builtin local
+        assert_eq!(group_scope(-2147483644), "DomainLocal"); // security, resource
+        assert_eq!(group_scope(-2147483640), "Universal");   // security, universal
+        assert_eq!(group_scope(2), "Global");                // distribution, global
+        assert_eq!(group_scope(8), "Universal");             // distribution, universal
+        assert_eq!(group_scope(0), "");
     }
 }

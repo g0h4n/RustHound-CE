@@ -5,6 +5,7 @@ use log::{debug, trace};
 use std::collections::HashMap;
 use std::error::Error;
 
+use crate::enums::decode_guid_le;
 use crate::enums::regex::OBJECT_SID_RE1;
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::utils::date::string_to_epoch;
@@ -110,6 +111,20 @@ impl Fsp {
             }
         }
 
+
+        // For all, bins attributs
+        for (key, value) in &result_bin {
+            match key.as_str() {
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
+                }
+                _ => {}
+            }
+        }
+
         // Push DN and SID in HashMap
         if self.object_identifier != "SID" {
             dn_sid.insert(
@@ -129,14 +144,17 @@ impl Fsp {
 /// Default FSP properties structure
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct FspProperties {
-   domain: String,
-   name: String,
-   distinguishedname: String,
-   domainsid: String,
-   isaclprotected: bool,
-   highvalue: bool,
-   description: Option<String>,
-   whencreated: i64,
+    domain: String,
+    name: String,
+    distinguishedname: String,
+    domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
+    isaclprotected: bool,
+    highvalue: bool,
+    description: Option<String>,
+    whencreated: i64,
 }
 
 impl FspProperties {
@@ -263,5 +281,9 @@ impl LdapObject for Fsp {
     }
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
+    }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
     }
 }

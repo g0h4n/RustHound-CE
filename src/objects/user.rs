@@ -7,6 +7,7 @@ use std::error::Error;
 use std::collections::HashSet;
 use x509_parser::prelude::*;
 
+use crate::enums::decode_guid_le;
 use crate::enums::regex::{OBJECT_SID_RE1, SID_PART1_RE1};
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::utils::date::{convert_timestamp, string_to_epoch};
@@ -134,27 +135,24 @@ impl User {
                 "unixUserPassword" => {
                     self.properties.unixpassword = value[0].to_owned();
                 }
-                "unicodepwd" => {
+                "unicodePwd" => {
                     self.properties.unicodepassword = value[0].to_owned();
                 }
-                "sfupassword" => {
+                "msSFU30Password" => {
                     //self.properties.sfupassword = value[0].to_owned();
                 }
                 "displayName" => {
                     self.properties.displayname = value[0].to_owned();
                 }
                 "adminCount" => {
-                    let isadmin = &value[0];
-                    let mut admincount = false;
-                    if isadmin =="1" {
-                        admincount = true;
-                    }
+                    let admincount = value[0].parse::<i32>().unwrap_or(0) != 0;
                     self.properties.admincount = admincount;
+                    self.properties.adminsdholderprotected = admincount;
                 }
                 "homeDirectory" => {
                     self.properties.homedirectory = value[0].to_owned();
                 }
-                "scriptpath" => {
+                "scriptPath" => {
                     self.properties.logonscript = value[0].to_owned();
                 }
                 "profilePath" | "profilepath" => {
@@ -193,7 +191,29 @@ impl User {
                         if flag.contains("TrustedToAuthForDelegation") {
                             self.properties.trustedtoauth = true;
                         };
+                        if flag.contains("SmartcardRequired") {
+                            self.properties.smartcardrequired = true;
+                        };
+                        if flag.contains("UseDesKeyOnly") {
+                            self.properties.usedeskeyonly = true;
+                        };
+                        if flag.contains("EncryptedTextPwdAllowed") {
+                            self.properties.encryptedtextpwdallowed = true;
+                        };
+                        if flag.contains("Script") {
+                            self.properties.logonscriptenabled = true;
+                        };
                     }
+                }
+                "msDS-User-Account-Control-Computed" => {
+                    // Constructed attribute: UF_LOCKOUT and UF_PASSWORD_EXPIRED live
+                    // here, not in userAccountControl. Computed by the DC we query,
+                    // so lockedout reflects that DC's view only.
+                    const UF_LOCKOUT: u32 = 0x0000_0010;
+                    const UF_PASSWORD_EXPIRED: u32 = 0x0080_0000;
+                    let computed = value[0].parse::<u32>().unwrap_or(0);
+                    self.properties.lockedout = computed & UF_LOCKOUT != 0;
+                    self.properties.passwordexpired = computed & UF_PASSWORD_EXPIRED != 0;
                 }
                 "msDS-AllowedToDelegateTo" => {
                     let mut vec_members2: Vec<Member> = Vec::new();
@@ -295,6 +315,11 @@ impl User {
         let mut sid: String = "".to_owned();
         for (key, value) in &result_bin {
             match key.as_str() {
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.properties.objectguid = guid;
+                }
                 "objectSid" => {
                     sid = sid_maker(LdapSid::parse(&value[0]).unwrap().1, domain);
                     self.object_identifier = sid.to_owned();
@@ -453,6 +478,10 @@ impl LdapObject for User {
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 /// User properties structure
@@ -461,6 +490,9 @@ pub struct UserProperties {
     domain: String,
     name: String,
     domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
     isaclprotected: bool,
     distinguishedname: String,
     highvalue: bool,
@@ -491,9 +523,16 @@ pub struct UserProperties {
     sfupassword: String,
     profilepath: String,
     admincount: bool,
+    adminsdholderprotected: bool,
+    smartcardrequired: bool,
+    usedeskeyonly: bool,
+    encryptedtextpwdallowed: bool,
+    logonscriptenabled: bool,
+    lockedout: bool,
+    passwordexpired: bool,
     supportedencryptiontypes: Vec<String>,
     sidhistory: Vec<String>,
-    allowedtodelegate: Vec<String>
+    allowedtodelegate: Vec<String>,
 }
 
 impl UserProperties {

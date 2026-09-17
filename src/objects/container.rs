@@ -93,6 +93,7 @@ impl Container {
                 "objectGUID" => {
                     let guid = decode_guid_le(&value[0]);
                     self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
@@ -134,14 +135,17 @@ impl Container {
 /// Default FSP properties structure
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ContainerProperties {
-   domain: String,
-   name: String,
-   distinguishedname: String,
-   domainsid: String,
-   isaclprotected: bool,
-   highvalue: bool,
-   description: Option<String>,
-   whencreated: i64,
+    domain: String,
+    name: String,
+    distinguishedname: String,
+    domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
+    isaclprotected: bool,
+    highvalue: bool,
+    description: Option<String>,
+    whencreated: i64,
 }
 
 impl LdapObject for Container {
@@ -212,5 +216,9 @@ impl LdapObject for Container {
     }
     fn set_child_objects(&mut self, child_objects: Vec<Member>) {
         self.child_objects = child_objects
+    }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
     }
 }

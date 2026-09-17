@@ -12,6 +12,17 @@ use crate::enums::sid::sid_maker;
 use bitflags::bitflags;
 use log::{error, trace};
 
+/// Node-level OWNER RIGHTS summary: `(doesanyacegrantownerrights,
+/// doesanyinheritedacegrantownerrights)`. Per-ACE flags are set by
+/// `AceTemplate::new`.
+fn owner_rights_summary(aces: &[AceTemplate]) -> (bool, bool) {
+    let any = aces.iter().any(|a| a.is_permission_for_owner_rights_sid());
+    let any_inherited = aces
+        .iter()
+        .any(|a| a.is_inherited_permission_for_owner_rights_sid());
+    (any, any_inherited)
+}
+
 /// Parses an object's `nTSecurityDescriptor` and updates its ACL protection state.
 /// <http://www.selfadsi.org/deep-inside/ad-security-descriptors.htm#SecurityDescriptorStructure>
 pub fn parse_ntsecuritydescriptor<T: LdapObject>(
@@ -33,6 +44,10 @@ pub fn parse_ntsecuritydescriptor<T: LdapObject>(
         schema_guid_map,
     );
     object.set_is_acl_protected(is_acl_protected);
+
+    let (any, any_inherited) = owner_rights_summary(&aces);
+    object.set_owner_rights_flags(any, any_inherited);
+
     aces
 }
 

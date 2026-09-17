@@ -100,6 +100,7 @@ impl IssuancePolicie {
                     // objectGUID raw to string
                     let guid = decode_guid_le(&value[0]);
                     self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
@@ -206,6 +207,10 @@ impl LdapObject for IssuancePolicie {
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 
@@ -216,6 +221,9 @@ pub struct IssuancePolicieProperties {
     name: String,
     distinguishedname: String,
     domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
     isaclprotected: bool,
     description: Option<String>,
     whencreated: i64,
@@ -230,6 +238,9 @@ impl Default for IssuancePolicieProperties {
             name: String::from(""),
             distinguishedname: String::from(""),
             domainsid: String::from(""),
+            objectguid: String::from(""),
+            doesanyacegrantownerrights: false,
+            doesanyinheritedacegrantownerrights: false,
             isaclprotected: false,
             description: None,
             whencreated: -1,

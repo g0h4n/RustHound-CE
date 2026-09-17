@@ -30,32 +30,32 @@
 
 Attribute-by-attribute comparison between `rusthound-ce` and `SharpHound v2.16.0.0`,
 measured on the same domain on `2026-09-15`, `rusthound-ce` side updated after the
-ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)). Counts every
-checkbox of the [List of attributes](#list-of-attributes) section, including nested
-sub-fields.
+ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
+`objectguid` support. Counts every checkbox of the
+[List of attributes](#list-of-attributes) section, including nested sub-fields.
 
 | Object | Attributes | :white_check_mark: Implemented | :red_circle: Missing | Compatibility |
 | :--- | ---: | ---: | ---: | :--- |
-| CertTemplate | 47 | 39 | 8 | `████████░░` 83.0% |
-| Domain | 55 | 45 | 10 | `████████░░` 81.8% |
-| OU | 34 | 27 | 7 | `████████░░` 79.4% |
-| RootCA | 28 | 22 | 6 | `████████░░` 78.6% |
-| User | 70 | 55 | 15 | `████████░░` 78.6% |
-| AIACA | 30 | 23 | 7 | `████████░░` 76.7% |
-| Gpo | 25 | 19 | 6 | `████████░░` 76.0% |
-| NtAuthStore | 24 | 18 | 6 | `████████░░` 75.0% |
-| Container | 26 | 19 | 7 | `███████░░░` 73.1% |
-| Group | 32 | 21 | 11 | `███████░░░` 65.6% |
-| EnterpriseCA | 70 | 43 | 27 | `██████░░░░` 61.4% |
-| IssuancePolicies | 27 | 16 | 11 | `██████░░░░` 59.3% |
-| Computer | 119 | 58 | 61 | `█████░░░░░` 48.7% |
-| **Total** | **587** | **405** | **182** | **`███████░░░` 69.0%** |
+| [RootCA](#rootca) | 28 | 27 | 1 | `██████████` 96.4% |
+| [Gpo](#gpo) | 25 | 24 | 1 | `██████████` 96.0% |
+| [NtAuthStore](#ntauthstore) | 24 | 23 | 1 | `██████████` 95.8% |
+| [User](#user) | 70 | 67 | 3 | `██████████` 95.7% |
+| [OU](#ou) | 34 | 32 | 2 | `█████████░` 94.1% |
+| [Group](#group) | 32 | 30 | 2 | `█████████░` 93.8% |
+| [CertTemplate](#certtemplate) | 47 | 44 | 3 | `█████████░` 93.6% |
+| [AIACA](#aiaca) | 30 | 28 | 2 | `█████████░` 93.3% |
+| [Container](#container) | 26 | 24 | 2 | `█████████░` 92.3% |
+| [Domain](#domain) | 55 | 50 | 5 | `█████████░` 90.9% |
+| [IssuancePolicies](#issuancepolicies) | 27 | 21 | 6 | `████████░░` 77.8% |
+| [EnterpriseCA](#enterpriseca) | 70 | 51 | 19 | `███████░░░` 72.9% |
+| [Computer](#computer) | 119 | 74 | 45 | `██████░░░░` 62.2% |
+| **Total** | **587** | **495** | **92** | **`████████░░` 84.3%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
 > `Computer` is pulled down by `LocalGroups`, `NTLMRegistryData`, `SmbInfo`,
 > `IsWebClientRunning` and `DCRegistryData`; `EnterpriseCA` by `CARegistryData`.
 > Those 55 attributes are all unimplemented and require RPC/SMB access to the
-> hosts; excluding them, coverage rises to 76.1% (405 / 532).
+> hosts; excluding them, coverage rises to 93.0% (495 / 532).
 
 ## Authentification
   - [x] LDAP (389) :white_check_mark:
@@ -92,7 +92,7 @@ sub-fields.
 - [ ] Remote registry collection (`NTLMRegistryData`, `DCRegistryData`, `CARegistryData`) :red_circle: :new:
 - [ ] SMB signing probe (`SmbInfo`) :red_circle: :new:
 - [ ] WebClient/WebDAV service probe (`IsWebClientRunning`, prerequisite for ESC8 / coercion paths) :red_circle: :new:
-- [x] HTTP enrollment endpoints probe (`HttpEnrollmentEndpoints`, ADCS web enrollment over HTTP/HTTPS/EPA) :red_circle: :new:
+- [x] HTTP enrollment endpoints probe (`HttpEnrollmentEndpoints`, ADCS web enrollment over HTTP/HTTPS/EPA) :white_check_mark:
 
 ## List of attributes
 
@@ -101,9 +101,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
@@ -146,8 +146,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -158,9 +158,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark:
@@ -179,17 +179,17 @@ sub-fields.
 - [x] `Properties`:`operatingsystem` :white_check_mark:
 - [x] `Properties`:`supportedencryptiontypes` :white_check_mark:
 - [x] `Properties`:`sidhistory` :white_check_mark:
-- [ ] `Properties`:`useraccountcontrol` :red_circle: :new:
-- [ ] `Properties`:`isdc` :red_circle: :new: (`IsDC` is emitted at node level, but not as a property)
-- [ ] `Properties`:`isreadonlydc` :red_circle: :new:
-- [ ] `Properties`:`admincount` :red_circle: :new:
-- [ ] `Properties`:`adminsdholderprotected` :red_circle: :new:
-- [ ] `Properties`:`lockedout` :red_circle: :new:
-- [ ] `Properties`:`passwordexpired` :red_circle: :new:
-- [ ] `Properties`:`usedeskeyonly` :red_circle: :new:
-- [ ] `Properties`:`encryptedtextpwdallowed` :red_circle: :new:
-- [ ] `Properties`:`logonscriptenabled` :red_circle: :new:
-- [ ] `Properties`:`email` :red_circle: :new:
+- [x] `Properties`:`useraccountcontrol` :white_check_mark:
+- [x] `Properties`:`isdc` :white_check_mark:
+- [x] `Properties`:`isreadonlydc` :white_check_mark:
+- [x] `Properties`:`admincount` :white_check_mark:
+- [x] `Properties`:`adminsdholderprotected` :white_check_mark: (derived from `adminCount`, matches SharpHound on the test domain)
+- [x] `Properties`:`lockedout` :white_check_mark:
+- [x] `Properties`:`passwordexpired` :white_check_mark:
+- [x] `Properties`:`usedeskeyonly` :white_check_mark:
+- [x] `Properties`:`encryptedtextpwdallowed` :white_check_mark:
+- [x] `Properties`:`logonscriptenabled` :white_check_mark:
+- [x] `Properties`:`email` :white_check_mark:
 - [ ] `Properties`:`ldapavailable` :red_circle: :new:
 - [ ] `Properties`:`ldapsavailable` :red_circle: :new:
 - [ ] `Properties`:`ldapsigning` :red_circle: :new:
@@ -266,8 +266,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -279,9 +279,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`samaccountname` :white_check_mark:
@@ -313,15 +313,15 @@ sub-fields.
 - [x] `Properties`:`admincount` :white_check_mark:
 - [x] `Properties`:`supportedencryptiontypes` :white_check_mark:
 - [x] `Properties`:`sidhistory` :white_check_mark:
-- [x] `Properties`:`allowedtodelegate` :white_check_mark: (not emitted by SharpHound)
-- [ ] `Properties`:`adminsdholderprotected` :red_circle: :new:
-- [ ] `Properties`:`lockedout` :red_circle: :new:
-- [ ] `Properties`:`passwordexpired` :red_circle: :new:
-- [ ] `Properties`:`passwordcantchange` :red_circle: :new:
-- [ ] `Properties`:`smartcardrequired` :red_circle: :new:
-- [ ] `Properties`:`usedeskeyonly` :red_circle: :new:
-- [ ] `Properties`:`encryptedtextpwdallowed` :red_circle: :new:
-- [ ] `Properties`:`logonscriptenabled` :red_circle: :new:
+- [x] `Properties`:`allowedtodelegate` :white_check_mark:
+- [x] `Properties`:`adminsdholderprotected` :white_check_mark:
+- [x] `Properties`:`lockedout` :white_check_mark:
+- [x] `Properties`:`passwordexpired` :white_check_mark:
+- [ ] `Properties`:`passwordcantchange` :red_circle: :new: (not exposed in `userAccountControl`, verified on ESSOS; lives in the DACL as two denied `Change Password` ACEs)
+- [x] `Properties`:`smartcardrequired` :white_check_mark:
+- [x] `Properties`:`usedeskeyonly` :white_check_mark:
+- [x] `Properties`:`encryptedtextpwdallowed` :white_check_mark:
+- [x] `Properties`:`logonscriptenabled` :white_check_mark:
 - [ ] `Properties`:`reconcile` :red_circle: :new: (emitted by SharpHound on well-known / unresolved principals)
 - [x] `PrimaryGroupSID` :white_check_mark:
 - [x] `AllowedToDelegate`:`ObjectIdentifier` :white_check_mark:
@@ -338,8 +338,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -351,29 +351,29 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`samaccountname` :white_check_mark:
 - [x] `Properties`:`description` :white_check_mark:
 - [x] `Properties`:`whencreated` :white_check_mark:
 - [x] `Properties`:`admincount` :white_check_mark:
-- [ ] `Properties`:`groupscope` :red_circle: :new:
-- [ ] `Properties`:`sidhistory` :red_circle: :new:
-- [ ] `Properties`:`adminsdholderprotected` :red_circle: :new:
+- [x] `Properties`:`groupscope` :white_check_mark:
+- [x] `Properties`:`sidhistory` :white_check_mark:
+- [x] `Properties`:`adminsdholderprotected` :white_check_mark:
 - [ ] `Properties`:`reconcile` :red_circle: :new: (emitted by SharpHound on well-known / unresolved principals)
 - [x] `Members`:`ObjectIdentifier` :white_check_mark:
 - [x] `Members`:`ObjectType` :white_check_mark:
-- [ ] `HasSIDHistory` :red_circle: :new:
+- [x] `HasSIDHistory` :white_check_mark:
 - [x] `Aces`:`PrincipalSID` :white_check_mark:
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -385,9 +385,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark:
@@ -408,8 +408,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -421,9 +421,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
@@ -435,8 +435,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -448,9 +448,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark:
@@ -463,8 +463,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -476,9 +476,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -492,8 +492,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -505,9 +505,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -518,8 +518,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -531,9 +531,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -550,8 +550,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -563,9 +563,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -580,8 +580,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -593,9 +593,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -621,8 +621,8 @@ sub-fields.
     - [x] `Data`:`RightName` :white_check_mark:
     - [x] `Data`:`IsInherited` :white_check_mark:
     - [x] `Data`:`InheritanceHash` :white_check_mark:
-    - [ ] `Data`:`IsPermissionForOwnerRightsSid` :red_circle:
-    - [ ] `Data`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+    - [x] `Data`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+    - [x] `Data`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
     - [x] `Collected` :white_check_mark:
     - [x] `FailureReason` :white_check_mark:
 - [ ] `CARegistryData`:`EnrollmentAgentRestrictions` :red_circle: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (emitted as `Collected: true` with an empty list, which hides the fact that nothing was read)
@@ -652,8 +652,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -665,9 +665,9 @@ sub-fields.
 - [x] `Properties`:`name` :white_check_mark:
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
-- [ ] `Properties`:`objectguid` :red_circle: :new:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`objectguid` :white_check_mark:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -701,8 +701,8 @@ sub-fields.
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:

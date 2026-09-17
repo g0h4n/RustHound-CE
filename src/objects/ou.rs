@@ -118,10 +118,12 @@ impl Ou {
           // For all, bins attributes
         for (key, value) in &result_bin {
              match key.as_str() {
-                 "objectGUID" => {
-                     // objectGUID raw to string
-                     self.object_identifier = decode_guid_le(&value[0]).to_owned();
-                 }
+                "objectGUID" => {
+                    // objectGUID raw to string
+                    let guid = decode_guid_le(&value[0]);
+                    self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
+                }
                  "nTSecurityDescriptor" => {
                      // trace!("nTSecurityDescriptor ACES ACLS ?");
                      // nTSecurityDescriptor raw to string
@@ -225,6 +227,10 @@ impl LdapObject for Ou {
     fn set_child_objects(&mut self, child_objects: Vec<Member>) {
         self.child_objects = child_objects
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 // Ou properties structure
@@ -234,6 +240,9 @@ pub struct OuProperties {
     name: String,
     distinguishedname: String,
     domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
     isaclprotected: bool,
     highvalue: bool,
     description: Option<String>,
@@ -250,7 +259,7 @@ impl OuProperties {
         &self.distinguishedname
     }
 
-
+    // Mutable access.
     pub fn isaclprotected_mut(&mut self) -> &mut bool {
         &mut self.isaclprotected
     }

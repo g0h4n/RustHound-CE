@@ -36,6 +36,7 @@ pub trait LdapObject {
    fn set_links(&mut self, links: Vec<Link>);
    fn set_contained_by(&mut self, contained_by: Option<Member>);
    fn set_child_objects(&mut self, child_objects: Vec<Member>);
+   fn set_owner_rights_flags(&mut self, _any: bool, _any_inherited: bool);
 }
 
 /// LocalGroup structure
@@ -323,8 +324,18 @@ impl Member {
    }
 }
 
+/// Well-known SID of OWNER RIGHTS. An ACE granting rights to it applies to
+/// whoever currently owns the object, making ownership an escalation path.
+const OWNER_RIGHTS_SID: &str = "S-1-3-4";
+
+/// `sid_maker` prefixes well-known SIDs with the domain name, so a plain
+/// equality test is not enough.
+fn is_owner_rights_sid(sid: &str) -> bool {
+    sid == OWNER_RIGHTS_SID || sid.ends_with(&format!("-{OWNER_RIGHTS_SID}"))
+}
+
 /// AceTemplate structure
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct AceTemplate {
    #[serde(rename = "PrincipalSID")]
    principal_sid: String,
@@ -336,6 +347,10 @@ pub struct AceTemplate {
    is_inherited: bool,
    #[serde(rename = "InheritanceHash")]
    inheritance_hash: String,
+   #[serde(rename = "IsPermissionForOwnerRightsSid")]
+   is_permission_for_owner_rights_sid: bool,
+   #[serde(rename = "IsInheritedPermissionForOwnerRightsSid")]
+   is_inherited_permission_for_owner_rights_sid: bool,
 }
 
 impl AceTemplate {
@@ -346,8 +361,19 @@ impl AceTemplate {
       right_name: String,
       is_inherited: bool,
       inheritance_hash: String,
-   ) -> Self { 
-      Self { principal_sid, principal_type , right_name, is_inherited, inheritance_hash} 
+   ) -> Self {
+      // Both OWNER RIGHTS flags follow from the trustee SID and the inherited
+      // bit, so they are computed here rather than in a later pass.
+      let is_owner_rights = is_owner_rights_sid(&principal_sid);
+      Self {
+         principal_sid,
+         principal_type,
+         right_name,
+         is_inherited,
+         inheritance_hash,
+         is_permission_for_owner_rights_sid: is_owner_rights,
+         is_inherited_permission_for_owner_rights_sid: is_owner_rights && is_inherited,
+      }
    }
 
    // Immutable access.
@@ -366,6 +392,12 @@ impl AceTemplate {
    pub fn inheritance_hash(&self) -> &String {
       &self.inheritance_hash
    }
+   pub fn is_permission_for_owner_rights_sid(&self) -> bool {
+      self.is_permission_for_owner_rights_sid
+   }
+   pub fn is_inherited_permission_for_owner_rights_sid(&self) -> bool {
+      self.is_inherited_permission_for_owner_rights_sid
+   }
 
    // Mutable access.
    pub fn principal_sid_mut(&mut self) -> &mut String {
@@ -382,6 +414,12 @@ impl AceTemplate {
    }
    pub fn inheritance_hash_mut(&mut self) -> &mut String {
       &mut self.inheritance_hash
+   }
+
+   /// Set both OWNER RIGHTS flags from the trustee SID check.
+   pub(crate) fn set_owner_rights_flags(&mut self, is_owner_rights: bool) {
+      self.is_permission_for_owner_rights_sid = is_owner_rights;
+      self.is_inherited_permission_for_owner_rights_sid = is_owner_rights && self.is_inherited;
    }
 }
 

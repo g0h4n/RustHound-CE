@@ -95,7 +95,9 @@ impl NtAuthStore {
             match key.as_str() {
                 "objectGUID" => {
                     // objectGUID raw to string
-                    self.object_identifier = decode_guid_le(&value[0]).to_owned();
+                    let guid = decode_guid_le(&value[0]);
+                    self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
@@ -206,18 +208,25 @@ impl LdapObject for NtAuthStore {
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
     }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
 }
 
 
 // NtAuthStore properties structure
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct NtAuthStoreProperties {
-   domain: String,
-   name: String,
-   distinguishedname: String,
-   domainsid: String,
-   isaclprotected: bool,
-   certthumbprints: Vec<String>,
-   description: Option<String>,
-   whencreated: i64,
+    domain: String,
+    name: String,
+    distinguishedname: String,
+    domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
+    isaclprotected: bool,
+    certthumbprints: Vec<String>,
+    description: Option<String>,
+    whencreated: i64,
 }

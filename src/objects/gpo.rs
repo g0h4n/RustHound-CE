@@ -25,8 +25,6 @@ pub struct Gpo {
     is_acl_protected: bool,
     #[serde(rename = "ContainedBy")]
     contained_by: Option<Member>,
-    #[serde(rename = "Links")]
-    links: Vec<Link>,
 }
 
 impl Gpo {
@@ -134,7 +132,9 @@ impl Gpo {
             match key.as_str() {
                 "objectGUID" => {
                     // objectGUID raw to string
-                    self.object_identifier = decode_guid_le(&value[0]).to_owned();
+                    let guid = decode_guid_le(&value[0]);
+                    self.object_identifier = guid.to_owned();
+                    self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
                     // nTSecurityDescriptor raw to string
@@ -227,14 +227,18 @@ impl LdapObject for Gpo {
     fn set_allowed_to_delegate(&mut self, _allowed_to_delegate: Vec<Member>) {
         // Not used by current object.
     }
-    fn set_links(&mut self, links: Vec<Link>) {
-        self.links = links;
+    fn set_links(&mut self, _links: Vec<Link>) {
+        // Not used by current object.
     }
     fn set_contained_by(&mut self, contained_by: Option<Member>) {
         self.contained_by = contained_by;
     }
     fn set_child_objects(&mut self, _child_objects: Vec<Member>) {
         // Not used by current object.
+    }
+    fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
+        self.properties.doesanyacegrantownerrights = any;
+        self.properties.doesanyinheritedacegrantownerrights = any_inherited;
     }
 }
 
@@ -245,6 +249,9 @@ pub struct GpoProperties {
     name: String,
     distinguishedname: String,
     domainsid: String,
+    objectguid: String,
+    doesanyacegrantownerrights: bool,
+    doesanyinheritedacegrantownerrights: bool,
     isaclprotected: bool,
     highvalue: bool,
     description: Option<String>,
