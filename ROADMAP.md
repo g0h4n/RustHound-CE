@@ -36,26 +36,26 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 
 | Object | Attributes | :white_check_mark: Implemented | :red_circle: Missing | Compatibility |
 | :--- | ---: | ---: | ---: | :--- |
-| [User](#user) | 70 | 63 | 7 | `█████████░` 90.0% |
-| [CertTemplate](#certtemplate) | 47 | 40 | 7 | `█████████░` 85.1% |
-| [Domain](#domain) | 55 | 46 | 9 | `████████░░` 83.6% |
-| [OU](#ou) | 34 | 28 | 6 | `████████░░` 82.4% |
-| [RootCA](#rootca) | 28 | 23 | 5 | `████████░░` 82.1% |
-| [Group](#group) | 32 | 26 | 6 | `████████░░` 81.2% |
-| [AIACA](#aiaca) | 30 | 24 | 6 | `████████░░` 80.0% |
-| [Gpo](#gpo) | 25 | 20 | 5 | `████████░░` 80.0% |
-| [NtAuthStore](#ntauthstore) | 24 | 19 | 5 | `████████░░` 79.2% |
-| [Container](#container) | 26 | 20 | 6 | `████████░░` 76.9% |
-| [EnterpriseCA](#enterpriseca) | 70 | 45 | 25 | `██████░░░░` 64.3% |
-| [IssuancePolicies](#issuancepolicies) | 27 | 17 | 10 | `██████░░░░` 63.0% |
-| [Computer](#computer) | 119 | 70 | 49 | `██████░░░░` 58.8% |
-| **Total** | **587** | **441** | **146** | **`████████░░` 75.1%** |
+| [RootCA](#rootca) | 28 | 27 | 1 | `██████████` 96.4% |
+| [Gpo](#gpo) | 25 | 24 | 1 | `██████████` 96.0% |
+| [NtAuthStore](#ntauthstore) | 24 | 23 | 1 | `██████████` 95.8% |
+| [User](#user) | 70 | 67 | 3 | `██████████` 95.7% |
+| [OU](#ou) | 34 | 32 | 2 | `█████████░` 94.1% |
+| [Group](#group) | 32 | 30 | 2 | `█████████░` 93.8% |
+| [CertTemplate](#certtemplate) | 47 | 44 | 3 | `█████████░` 93.6% |
+| [AIACA](#aiaca) | 30 | 28 | 2 | `█████████░` 93.3% |
+| [Container](#container) | 26 | 24 | 2 | `█████████░` 92.3% |
+| [Domain](#domain) | 55 | 50 | 5 | `█████████░` 90.9% |
+| [IssuancePolicies](#issuancepolicies) | 27 | 21 | 6 | `████████░░` 77.8% |
+| [EnterpriseCA](#enterpriseca) | 70 | 51 | 19 | `███████░░░` 72.9% |
+| [Computer](#computer) | 119 | 74 | 45 | `██████░░░░` 62.2% |
+| **Total** | **587** | **495** | **92** | **`████████░░` 84.3%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
 > `Computer` is pulled down by `LocalGroups`, `NTLMRegistryData`, `SmbInfo`,
 > `IsWebClientRunning` and `DCRegistryData`; `EnterpriseCA` by `CARegistryData`.
 > Those 55 attributes are all unimplemented and require RPC/SMB access to the
-> hosts; excluding them, coverage rises to 82.9% (441 / 532).
+> hosts; excluding them, coverage rises to 93.0% (495 / 532).
 
 ## Authentification
   - [x] LDAP (389) :white_check_mark:
@@ -102,8 +102,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
@@ -146,8 +146,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -159,8 +159,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark:
@@ -266,8 +266,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -280,8 +280,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`samaccountname` :white_check_mark:
@@ -338,8 +338,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -352,8 +352,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`samaccountname` :white_check_mark:
@@ -372,8 +372,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -386,8 +386,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark:
@@ -408,8 +408,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -422,8 +422,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
@@ -435,8 +435,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -449,8 +449,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`highvalue` :white_check_mark: (dropped from BloodHound CE, candidate for removal)
 - [x] `Properties`:`description` :white_check_mark:
@@ -463,8 +463,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -477,8 +477,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -492,8 +492,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -506,8 +506,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -518,8 +518,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -532,8 +532,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -550,8 +550,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -564,8 +564,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -580,8 +580,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -594,8 +594,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -621,8 +621,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
     - [x] `Data`:`RightName` :white_check_mark:
     - [x] `Data`:`IsInherited` :white_check_mark:
     - [x] `Data`:`InheritanceHash` :white_check_mark:
-    - [ ] `Data`:`IsPermissionForOwnerRightsSid` :red_circle:
-    - [ ] `Data`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+    - [x] `Data`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+    - [x] `Data`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
     - [x] `Collected` :white_check_mark:
     - [x] `FailureReason` :white_check_mark:
 - [ ] `CARegistryData`:`EnrollmentAgentRestrictions` :red_circle: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (emitted as `Collected: true` with an empty list, which hides the fact that nothing was read)
@@ -652,8 +652,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
@@ -666,8 +666,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`distinguishedname` :white_check_mark:
 - [x] `Properties`:`domainsid` :white_check_mark:
 - [x] `Properties`:`objectguid` :white_check_mark:
-- [ ] `Properties`:`doesanyinheritedacegrantownerrights` :red_circle:
-- [ ] `Properties`:`doesanyacegrantownerrights` :red_circle:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark:
 - [x] `Properties`:`isaclprotected` :white_check_mark: (this value replaces `IsACLProtected`)
 - [x] `Properties`:`description` :white_check_mark: (not emitted by SharpHound)
 - [x] `Properties`:`whencreated` :white_check_mark:
@@ -701,8 +701,8 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Aces`:`RightName` :white_check_mark:
 - [x] `Aces`:`IsInherited` :white_check_mark:
 - [ ] `Aces`:`InheritanceHash` :red_circle:
-- [ ] `Aces`:`IsPermissionForOwnerRightsSid` :red_circle:
-- [ ] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :red_circle:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
 - [x] `ObjectIdentifier` :white_check_mark:
 - [x] `IsDeleted` :white_check_mark:
 - [x] `IsACLProtected` :white_check_mark:
