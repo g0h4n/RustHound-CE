@@ -36,26 +36,26 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 
 | Object | Attributes | :white_check_mark: Implemented | :red_circle: Missing | Compatibility |
 | :--- | ---: | ---: | ---: | :--- |
+| User | 70 | 63 | 7 | `█████████░` 90.0% |
 | CertTemplate | 47 | 40 | 7 | `█████████░` 85.1% |
 | Domain | 55 | 46 | 9 | `████████░░` 83.6% |
 | OU | 34 | 28 | 6 | `████████░░` 82.4% |
 | RootCA | 28 | 23 | 5 | `████████░░` 82.1% |
-| User | 70 | 56 | 14 | `████████░░` 80.0% |
 | AIACA | 30 | 24 | 6 | `████████░░` 80.0% |
 | Gpo | 25 | 20 | 5 | `████████░░` 80.0% |
 | NtAuthStore | 24 | 19 | 5 | `████████░░` 79.2% |
 | Container | 26 | 20 | 6 | `████████░░` 76.9% |
 | Group | 32 | 22 | 10 | `███████░░░` 68.8% |
-| IssuancePolicies | 27 | 17 | 10 | `██████░░░░` 63.0% |
 | EnterpriseCA | 70 | 45 | 25 | `██████░░░░` 64.3% |
+| IssuancePolicies | 27 | 17 | 10 | `██████░░░░` 63.0% |
 | Computer | 119 | 70 | 49 | `██████░░░░` 58.8% |
-| **Total** | **587** | **430** | **157** | **`███████░░░` 73.3%** |
+| **Total** | **587** | **437** | **150** | **`███████░░░` 74.4%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
 > `Computer` is pulled down by `LocalGroups`, `NTLMRegistryData`, `SmbInfo`,
 > `IsWebClientRunning` and `DCRegistryData`; `EnterpriseCA` by `CARegistryData`.
 > Those 55 attributes are all unimplemented and require RPC/SMB access to the
-> hosts; excluding them, coverage rises to 80.6% (429 / 532).
+> hosts; excluding them, coverage rises to 82.1% (437 / 532).
 
 ## Authentification
   - [x] LDAP (389) :white_check_mark:
@@ -313,15 +313,15 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `Properties`:`admincount` :white_check_mark:
 - [x] `Properties`:`supportedencryptiontypes` :white_check_mark:
 - [x] `Properties`:`sidhistory` :white_check_mark:
-- [x] `Properties`:`allowedtodelegate` :white_check_mark: (not emitted by SharpHound)
-- [ ] `Properties`:`adminsdholderprotected` :red_circle: :new:
-- [ ] `Properties`:`lockedout` :red_circle: :new:
-- [ ] `Properties`:`passwordexpired` :red_circle: :new:
+- [x] `Properties`:`allowedtodelegate` :white_check_mark:
+- [x] `Properties`:`adminsdholderprotected` :white_check_mark:
+- [x] `Properties`:`lockedout` :white_check_mark:
+- [x] `Properties`:`passwordexpired` :white_check_mark:
 - [ ] `Properties`:`passwordcantchange` :red_circle: :new: (not exposed in `userAccountControl`, verified on ESSOS; lives in the DACL as two denied `Change Password` ACEs)
-- [ ] `Properties`:`smartcardrequired` :red_circle: :new:
-- [ ] `Properties`:`usedeskeyonly` :red_circle: :new:
-- [ ] `Properties`:`encryptedtextpwdallowed` :red_circle: :new:
-- [ ] `Properties`:`logonscriptenabled` :red_circle: :new:
+- [x] `Properties`:`smartcardrequired` :white_check_mark:
+- [x] `Properties`:`usedeskeyonly` :white_check_mark:
+- [x] `Properties`:`encryptedtextpwdallowed` :white_check_mark:
+- [x] `Properties`:`logonscriptenabled` :white_check_mark:
 - [ ] `Properties`:`reconcile` :red_circle: :new: (emitted by SharpHound on well-known / unresolved principals)
 - [x] `PrimaryGroupSID` :white_check_mark:
 - [x] `AllowedToDelegate`:`ObjectIdentifier` :white_check_mark:
