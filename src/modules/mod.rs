@@ -2,7 +2,8 @@
 pub mod adcs;
 pub mod gpo;
 pub mod resolver;
-pub mod sessions;
+pub mod session;
+pub mod localgroup;
 
 use std::error::Error;
 
@@ -42,8 +43,8 @@ pub async fn run_modules(
     // - SRVSVC / NetrSessionEnum - inbound SMB sessions (client IP + username).
     // - WKSSVC / NetrWkstaUserEnum - users with an active logon context on the machine.
     // - WINREG / HKEY_USERS - SIDs of loaded profile hives (= logged-on users).
-    if common_args.collection_method.does_sessions() && !cert_auth {
-        sessions::run(common_args, &ad.users, &mut ad.computers).await?;
+    if common_args.collection_method.does_session() && !cert_auth {
+        session::run(common_args, &ad.users, &mut ad.computers).await?;
     }
 
     // [MODULE - ESC8] Web enrollment probe on all enterprise CAs.
@@ -107,8 +108,20 @@ pub async fn run_modules(
                 &mut ad.computers,
                 &sysvol,
                 &ad.mappings.dn_sid,
+                &common_args.domain
             );
         }
+    }
+
+    // [MODULE - LOCAL GROUPS] BUILTIN alias membership over SAMR (issue #69)
+    // <https://github.com/g0h4n/LocalGroups-rs>
+    //
+    //   SAMR / SamrOpenAlias + SamrGetMembersInAlias -> Computer.LocalGroups
+    //   RID 544/555/562/580 -> AdminTo / CanRDP / ExecuteDCOM / CanPSRemote
+    //
+    // Auth reuses SmbAuth (password / hash / ticket); complements #56 (GPO).
+    if common_args.collection_method.does_local_group() && !cert_auth {
+        localgroup::run(common_args, &ad.users, &mut ad.computers, &ad.mappings.sid_type).await?;
     }
 
     // Other modules need to be add here...

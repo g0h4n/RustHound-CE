@@ -49,23 +49,22 @@ impl Options {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CollectionMethod {
-    All,            // LDAP + sessions (all three RPC paths) + SMB on SYSVOL
+    All,            // LDAP + Session (all three RPC paths) + SMB on SYSVOL + LovalGroup 
     DCOnly,         // LDAP only, never contacts a machine + SMB on SYSVOL
     Session,        // LDAP + SRVSVC + WKSSVC + WINREG 
     RegistryOnly,   // LDAP + WINREG
     LdapOnly,       // LDAP
+    GPOLocalGroup,  // LDAP + GPOLocalGroup with SMB on SYSVOL
+    LocalGroup,     // LDAP + RPC SAMR
 }
 
 impl CollectionMethod {
-    // Methods that never contact a machine: DCOnly and LdapOnly.
-    pub fn does_sessions(&self) -> bool {
-        !matches!(self, Self::DCOnly | Self::LdapOnly)
-    }
-    pub fn srvsvc(&self)   -> bool { matches!(self, Self::All | Self::Session) }
-    pub fn wkssvc(&self)   -> bool { matches!(self, Self::All | Self::Session) }
-    pub fn registry(&self) -> bool { matches!(self, Self::All | Self::Session | Self::RegistryOnly) }
-    // SYSVOL GPO reading contacts the DC, so LdapOnly stays out of it.
-    pub fn does_gpo(&self)  -> bool { matches!(self, Self::All | Self::DCOnly) }
+    pub fn does_session(&self)      -> bool { matches!(self, Self::All | Self::Session) }
+    pub fn srvsvc(&self)            -> bool { matches!(self, Self::All | Self::Session) }
+    pub fn wkssvc(&self)            -> bool { matches!(self, Self::All | Self::Session) }
+    pub fn registry(&self)          -> bool { matches!(self, Self::All | Self::Session | Self::RegistryOnly) }
+    pub fn does_gpo(&self)          -> bool { matches!(self, Self::All | Self::DCOnly | Self::GPOLocalGroup) }
+    pub fn does_local_group(&self)  -> bool { matches!(self, Self::All | Self::LocalGroup) }
 }
 
 // Current RustHound version
@@ -176,9 +175,9 @@ fn cli() -> Command {
     .arg(Arg::new("collectionmethod")
         .short('c')
         .long("collectionmethod")
-        .help("Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL) (default: All)")        .required(false)
+        .help("Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroups (LDAP + SAMR BUILTIN alias membership) (default: All)")
         .value_name("COLLECTIONMETHOD")
-        .value_parser(["All", "DCOnly", "Session", "RegistryOnly", "LdapOnly"])
+        .value_parser(["All", "DCOnly", "Session", "RegistryOnly", "LdapOnly", "GPOLocalGroup", "LocalGroup"])
         .num_args(0..=1)
         .default_missing_value("All")
     )
@@ -325,6 +324,8 @@ pub fn extract_args() -> Options {
         "Session"       => CollectionMethod::Session,
         "RegistryOnly"  => CollectionMethod::RegistryOnly,
         "LdapOnly"      => CollectionMethod::LdapOnly,
+        "GPOLocalGroup" => CollectionMethod::GPOLocalGroup,
+        "LocalGroup"    => CollectionMethod::LocalGroup,
         _               => CollectionMethod::All,
     };
     let ldap_filter = matches.get_one::<String>("ldap-filter").map(|s| s.as_str()).unwrap_or("(objectClass=*)");
