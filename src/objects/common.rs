@@ -44,6 +44,8 @@ pub trait LdapObject {
 pub struct LocalGroup {
    #[serde(rename = "ObjectIdentifier")]
    object_identifier: String,
+   #[serde(rename = "Name")]
+   name: String,
    #[serde(rename = "Results")]
    results: Vec<Member>,
    #[serde(rename = "LocalNames")]
@@ -82,6 +84,9 @@ impl LocalGroup {
    // Mutable access.
    pub fn object_identifier_mut(&mut self) -> &mut String {
       &mut self.object_identifier
+   }
+   pub fn name_mut(&mut self) -> &mut String {
+      &mut self.name
    }
    pub fn results_mut(&mut self) -> &mut Vec<Member> {
       &mut self.results

@@ -45,7 +45,8 @@ mimalloc = "0.1"
 futures     = "0.3" 
 anyhow      = "1"
 smb2-client = "0.2.4"
-dcerpc      = "0.2.7"
+dcerpc      = "0.2.11"
+windows-sddl = "0.1"
 # es8 check
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 # Kerberos SMB auth

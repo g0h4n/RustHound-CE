@@ -866,9 +866,9 @@ dependencies = [
 
 [[package]]
 name = "dcerpc"
-version = "0.2.9"
+version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ea6d00208aa00426820d6e4797ac94fd4252af1feacc046d9b0177796b4259e"
+checksum = "897e710e068d65122f42e06820e9cf4ef10a99f9bb5591de7b9cf81868cecc16"
 dependencies = [
  "aes 0.8.4",
  "des 0.8.1",
@@ -3013,6 +3013,7 @@ dependencies = [
  "smb2-client",
  "tokio",
  "trust-dns-resolver",
+ "windows-sddl",
  "winreg 0.52.0",
  "x509-parser 0.16.0",
  "zip",

@@ -73,7 +73,7 @@ pub async fn run(
     computers: &mut Vec<Computer>,
 ) -> Result<(), Box<dyn Error>> {
     // Hard guard: DCOnly must never touch a machine.
-    if !args.collection_method.does_sessions() {
+    if !args.collection_method.does_session() {
         debug!("[sessions] collection method does not contact hosts - skipping");
         return Ok(());
     }

@@ -103,6 +103,9 @@ impl Computer {
     pub fn users_rights_mut(&mut self) -> &mut Vec<UserRight> {
         &mut self.users_rights
     }
+    pub fn local_groups_mut(&mut self) -> &mut Vec<LocalGroup> {
+        &mut self.local_groups
+    }
 
     /// Function to parse and replace value for computer object.
     /// <https://bloodhound.readthedocs.io/en/latest/further-reading/json.html#computers>

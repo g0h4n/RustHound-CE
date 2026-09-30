@@ -358,7 +358,8 @@ mod tests {
             vec![guids[0], guids[1]],
         );
 
-        let merged = compute_merged(&applicable, &FakeResolver);
+        let domain = "ESSOS.LOCAL";
+        let merged = compute_merged(&applicable, &FakeResolver, domain);
         for principals in [
             &merged.local_admins,
             &merged.remote_desktop_users,
@@ -369,7 +370,8 @@ mod tests {
             assert_no_sid_suffix(principals, "1003");
         }
 
-        let privileges = resolve_privileges(&applicable, &FakeResolver);
+        let domain = "ESSOS.LOCAL";
+        let privileges = resolve_privileges(&applicable, &FakeResolver, domain);
         assert_eq!(privileges.len(), 1);
         assert_no_sid_suffix(&privileges[0].1, "1002");
         assert_no_sid_suffix(&privileges[0].1, "1003");

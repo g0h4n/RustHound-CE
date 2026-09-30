@@ -236,7 +236,7 @@ CERTIFICATE AUTHENTICATION:
 
 OPTIONAL FLAGS:
   -c, --collectionmethod [<COLLECTIONMETHOD>]
-          Which information to collect. Supported: All (LDAP,SMB,HTTP requests), DCOnly (no computer connections, only LDAP requests). (default: All) [possible values: All, DCOnly]
+          Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroups (LDAP + SAMR BUILTIN alias membership) (default: All) [possible values: All, DCOnly, Session, RegistryOnly, LdapOnly, GPOLocalGroup, LocalGroup]
       --ldap-filter <ldap-filter>
           Use custom ldap-filter default is : (objectClass=*)
       --ldaps

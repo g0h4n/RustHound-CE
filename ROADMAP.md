@@ -29,10 +29,8 @@
 ### Compatibility with SharpHound
 
 Attribute-by-attribute comparison between `rusthound-ce` and `SharpHound v2.16.0.0`,
-measured on the same domain on `2026-09-15`, `rusthound-ce` side updated after the
-ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
-`objectguid` support. Counts every checkbox of the
-[List of attributes](#list-of-attributes) section, including nested sub-fields.
+measured on the same domain on `2026-09-30`, `rusthound-ce` side updated after the `LocalGroups` collection over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69)).
+Counts every checkbox of the [List of attributes](#list-of-attributes) section, including nested sub-fields.
 
 | Object | Attributes | :white_check_mark: Implemented | :red_circle: Missing | Compatibility |
 | :--- | ---: | ---: | ---: | :--- |
@@ -48,14 +46,14 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 | [Domain](#domain) | 55 | 50 | 5 | `█████████░` 90.9% |
 | [IssuancePolicies](#issuancepolicies) | 27 | 21 | 6 | `████████░░` 77.8% |
 | [EnterpriseCA](#enterpriseca) | 70 | 51 | 19 | `███████░░░` 72.9% |
-| [Computer](#computer) | 119 | 74 | 45 | `██████░░░░` 62.2% |
-| **Total** | **587** | **495** | **92** | **`████████░░` 84.3%** |
+| [Computer](#computer) | 119 | 82 | 37 | `███████░░░` 68.9% |
+| **Total** | **587** | **503** | **84** | **`█████████░` 85.7%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
-> `Computer` is pulled down by `LocalGroups`, `NTLMRegistryData`, `SmbInfo`,
-> `IsWebClientRunning` and `DCRegistryData`; `EnterpriseCA` by `CARegistryData`.
-> Those 55 attributes are all unimplemented and require RPC/SMB access to the
-> hosts; excluding them, coverage rises to 93.0% (495 / 532).
+> `LocalGroups` is now collected over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69));
+> `Computer` is still pulled down by `NTLMRegistryData`, `SmbInfo`,
+> `IsWebClientRunning` and `DCRegistryData`, and `EnterpriseCA` by `CARegistryData`.
+> Those remaining remote attributes require RPC/SMB access to the hosts.
 
 ## Authentification
   - [x] LDAP (389) :white_check_mark:
@@ -88,7 +86,7 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] Resolve FQDN computers found to IP address **--fqdn-resolver** :white_check_mark:
 - [x] Session-collection feature, enumerates active sessions over three native RPC paths (SRVSVC, WKSSVC, WINREG) :white_check_mark:
 - [x] GPO-based collection from SYSVOL, reads `GptTmpl.inf` and `Groups.xml`, GPOChanges (LocalAdmins / RemoteDesktopUsers / DcomUsers / PSRemoteUsers) :white_check_mark:
-- [ ] Local group enumeration over SAMR/LSAT (`LocalGroups`, feeds `AdminTo` / `CanRDP` / `CanPSRemote` / `ExecuteDCOM`) :red_circle: :new:
+- [x] Local group enumeration over SAMR (`LocalGroups`, feeds `AdminTo` / `CanRDP` / `CanPSRemote` / `ExecuteDCOM`) :white_check_mark: :new:
 - [ ] Remote registry collection (`NTLMRegistryData`, `DCRegistryData`, `CARegistryData`) :red_circle: :new:
 - [ ] SMB signing probe (`SmbInfo`) :red_circle: :new:
 - [ ] WebClient/WebDAV service probe (`IsWebClientRunning`, prerequisite for ESC8 / coercion paths) :red_circle: :new:
@@ -212,14 +210,14 @@ ESC8 fix ([#67](https://github.com/g0h4n/RustHound-CE/issues/67)) and the
 - [x] `RegistrySessions`:`Results` :white_check_mark:
 - [x] `RegistrySessions`:`Collected` :white_check_mark:
 - [x] `RegistrySessions`:`FailureReason` :white_check_mark:
-- [ ] `LocalGroups` :red_circle: (key is emitted but always empty)
-    - [ ] `LocalGroups`:`Name` :red_circle: :new:
-    - [ ] `LocalGroups`:`ObjectIdentifier` :red_circle: :new:
-    - [ ] `LocalGroups`:`Results`:`ObjectIdentifier` :red_circle: :new:
-    - [ ] `LocalGroups`:`Results`:`ObjectType` :red_circle: :new:
-    - [ ] `LocalGroups`:`LocalNames` :red_circle: :new:
-    - [ ] `LocalGroups`:`Collected` :red_circle: :new:
-    - [ ] `LocalGroups`:`FailureReason` :red_circle: :new:
+- [x] `LocalGroups` :white_check_mark: (collected over SAMR BUILTIN aliases)
+    - [x] `LocalGroups`:`Name` :white_check_mark: :new:
+    - [x] `LocalGroups`:`ObjectIdentifier` :white_check_mark: :new:
+    - [x] `LocalGroups`:`Results`:`ObjectIdentifier` :white_check_mark: :new:
+    - [x] `LocalGroups`:`Results`:`ObjectType` :white_check_mark: :new:
+    - [x] `LocalGroups`:`LocalNames` :white_check_mark: :new:
+    - [x] `LocalGroups`:`Collected` :white_check_mark: :new:
+    - [x] `LocalGroups`:`FailureReason` :white_check_mark: :new:
 - [x] `UserRights`:`Privilege` :white_check_mark:
 - [x] `UserRights`:`Results`:`ObjectIdentifier` :white_check_mark:
 - [x] `UserRights`:`Results`:`ObjectType` :white_check_mark:
