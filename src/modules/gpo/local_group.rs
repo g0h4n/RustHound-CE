@@ -157,20 +157,39 @@ fn builtin_rid(s: &str) -> Option<u32> {
 }
 
 /// Resolve a raw principal string (SID or name) to a typed principal.
-fn resolve_principal(raw: &str, resolver: &impl Resolver) -> Option<TypedPrincipal> {
+fn resolve_principal(raw: &str, resolver: &impl Resolver, domain: &str) -> Option<TypedPrincipal> {
     let p = raw.trim().trim_start_matches('*').trim();
     if p.is_empty() {
         return None;
     }
     if p.len() >= 4 && p[..4].eq_ignore_ascii_case("S-1-") {
         let sid = p.to_uppercase();
+        // Well-known SIDs (S-1-5-32-*, S-1-5-<10..20>, S-1-1-0, S-1-3-*, S-1-0-*)
+        // are domain-scoped in BloodHound: prefix with the domain, uppercased,
+        // matching GetWellKnownPrincipalObjectIdentifier. A real domain SID
+        // (S-1-5-21-...) is already unique and left as-is.
+        let scoped = domain_scope_wellknown(&sid, domain);
         let object_type = resolver.type_of_sid(&sid).unwrap_or_else(|| "Base".to_string());
-        return Some(TypedPrincipal { sid, object_type });
+        return Some(TypedPrincipal { sid: scoped, object_type });
     }
     let bare = p.rsplit(['\\', '/']).next().unwrap_or(p);
     resolver
         .resolve_name(bare)
         .map(|(sid, object_type)| TypedPrincipal { sid, object_type })
+}
+
+/// A well-known SID becomes `<DOMAIN>-<SID>` (uppercased); a domain SID stays.
+fn domain_scope_wellknown(sid: &str, domain: &str) -> String {
+    let is_wellknown = sid.starts_with("S-1-5-32-")
+        || (sid.starts_with("S-1-5-") && !sid.starts_with("S-1-5-21-"))
+        || sid.starts_with("S-1-1-")
+        || sid.starts_with("S-1-3-")
+        || sid.starts_with("S-1-0-");
+    if is_wellknown {
+        format!("{}-{}", domain.to_uppercase(), sid)
+    } else {
+        sid.to_string()
+    }
 }
 
 // ---- action model (internal), mirrors SharpHound GroupAction -----------------
@@ -199,7 +218,7 @@ struct Action {
 }
 
 /// Build the ordered action list for a single GPO (GPP first, then GptTmpl).
-fn actions_for_gpo(gpo: &SysvolGpo, resolver: &impl Resolver) -> Vec<Action> {
+fn actions_for_gpo(gpo: &SysvolGpo, resolver: &impl Resolver, domain: &str) -> Vec<Action> {
     let mut out = Vec::new();
 
     for grp in &gpo.gpp_local_groups {
@@ -226,8 +245,8 @@ fn actions_for_gpo(gpo: &SysvolGpo, resolver: &impl Resolver) -> Vec<Action> {
             };
             let principal = m
                 .sid()
-                .and_then(|s| resolve_principal(s, resolver))
-                .or_else(|| m.name().and_then(|n| resolve_principal(n, resolver)));
+                .and_then(|s| resolve_principal(s, resolver, domain))
+                .or_else(|| m.name().and_then(|n| resolve_principal(n, resolver, domain)));
             if let Some(p) = principal {
                 out.push(Action { group, kind: Kind::LocalGroup, op, principal: Some(p) });
             }
@@ -235,26 +254,26 @@ fn actions_for_gpo(gpo: &SysvolGpo, resolver: &impl Resolver) -> Vec<Action> {
     }
 
     for dir in &gpo.restricted_groups {
-        push_restricted(dir, resolver, &mut out);
+        push_restricted(dir, resolver, domain, &mut out);
     }
 
     out
 }
 
-fn push_restricted(dir: &RestrictedGroupDirective, resolver: &impl Resolver, out: &mut Vec<Action>) {
+fn push_restricted(dir: &RestrictedGroupDirective, resolver: &impl Resolver, domain: &str, out: &mut Vec<Action>) {
     match dir.operation() {
         RestrictedGroupOperation::ReplaceMembers => {
             let Some(group) = builtin_rid(dir.target()).and_then(TargetGroup::from_rid) else {
                 return;
             };
             for raw in dir.principals() {
-                if let Some(p) = resolve_principal(raw, resolver) {
+                if let Some(p) = resolve_principal(raw, resolver, domain) {
                     out.push(Action { group, kind: Kind::RestrictedMember, op: Op::Add, principal: Some(p) });
                 }
             }
         }
         RestrictedGroupOperation::AddToParentGroups => {
-            let Some(member) = resolve_principal(dir.target(), resolver) else {
+            let Some(member) = resolve_principal(dir.target(), resolver, domain) else {
                 return;
             };
             for raw in dir.principals() {
@@ -343,10 +362,10 @@ fn merge(actions: &[Action]) -> MergedGroups {
 
 /// Compute the merged local groups for a container from its linked GPOs
 /// (already ordered: unenforced first, then enforced).
-pub fn compute_merged(ordered_gpos: &[&SysvolGpo], resolver: &impl Resolver) -> MergedGroups {
+pub fn compute_merged(ordered_gpos: &[&SysvolGpo], resolver: &impl Resolver, domain: &str) -> MergedGroups {
     let mut actions = Vec::new();
     for gpo in ordered_gpos {
-        actions.extend(actions_for_gpo(gpo, resolver));
+        actions.extend(actions_for_gpo(gpo, resolver, domain));
     }
     merge(&actions)
 }
@@ -355,6 +374,7 @@ pub fn compute_merged(ordered_gpos: &[&SysvolGpo], resolver: &impl Resolver) -> 
 pub fn resolve_privileges(
     ordered_gpos: &[&SysvolGpo],
     resolver: &impl Resolver,
+    domain: &str,
 ) -> Vec<(String, Vec<TypedPrincipal>)> {
     let mut order: Vec<String> = Vec::new();
     let mut map: HashMap<String, Vec<TypedPrincipal>> = HashMap::new();
@@ -368,7 +388,7 @@ pub fn resolve_privileges(
             }
             let entry = map.get_mut(&key).unwrap();
             for raw in pa.principals() {
-                if let Some(p) = resolve_principal(raw, resolver) {
+                if let Some(p) = resolve_principal(raw, resolver, domain) {
                     if !entry.iter().any(|x| x.sid == p.sid) {
                         entry.push(p);
                     }
@@ -409,6 +429,7 @@ pub fn apply_gpo(
     computers: &mut Vec<Computer>,
     sysvol: &[SysvolGpo],
     dn_sid: &HashMap<String, String>,
+    domain: &str,
 ) {
     let resolver = ObjectResolver::build(users, groups, computers);
 
@@ -432,12 +453,12 @@ pub fn apply_gpo(
     for ou in ous.iter_mut() {
         let label = ou.properties().distinguishedname().clone();
         let links: Vec<Link> = ou.get_links().to_vec();
-        fill_container("OU", &label, &links, ou.gpo_changes_mut(), &by_sid, &resolver, &mut priv_acc);
+        fill_container("OU", &label, &links, ou.gpo_changes_mut(), &by_sid, &resolver, domain, &mut priv_acc);
     }
     for dom in domains.iter_mut() {
         let label = dom.properties().distinguishedname().clone();
         let links: Vec<Link> = dom.get_links().to_vec();
-        fill_container("Domain", &label, &links, dom.gpo_changes_mut(), &by_sid, &resolver, &mut priv_acc);
+        fill_container("Domain", &label, &links, dom.gpo_changes_mut(), &by_sid, &resolver, domain, &mut priv_acc);
     }
 
     for c in computers.iter_mut() {
@@ -462,6 +483,7 @@ fn fill_container(
     changes: &mut GPOChange,
     by_sid: &HashMap<String, &SysvolGpo>,
     resolver: &impl Resolver,
+    domain: &str,
     priv_acc: &mut HashMap<String, HashMap<String, Vec<TypedPrincipal>>>,
 ) {
     // Links now hold (is_enforced, GPO SID). Order unenforced first, then enforced.
@@ -483,7 +505,7 @@ fn fill_container(
     }
 
     // Local groups -> this container's GPOChanges (AffectedComputers preserved).
-    let merged = compute_merged(&ordered, resolver);
+    let merged = compute_merged(&ordered, resolver, domain);
     *changes.local_admins_mut() = to_members(&merged.local_admins);
     *changes.remote_desktop_users_mut() = to_members(&merged.remote_desktop_users);
     *changes.dcom_users_mut() = to_members(&merged.dcom_users);
@@ -500,7 +522,7 @@ fn fill_container(
 
 
     // Privileges -> accumulate onto the computers the checker already resolved.
-    let privs = resolve_privileges(&ordered, resolver);
+    let privs = resolve_privileges(&ordered, resolver, domain);
     if privs.is_empty() {
         return;
     }
@@ -562,7 +584,8 @@ mod tests {
             RestrictedGroupOperation::ReplaceMembers,
             &["*S-1-5-21-1-1-512", "*ALICE"],
         );
-        let merged = compute_merged(&[&g], &FakeResolver);
+        let domain= "ESSOS.LOCAL";
+        let merged = compute_merged(&[&g], &FakeResolver, domain);
         let sids: Vec<&str> = merged.local_admins.iter().map(|p| p.sid.as_str()).collect();
         assert_eq!(sids, vec!["S-1-5-21-1-1-512", "S-1-5-21-1-1-1105"]);
         assert_eq!(merged.local_admins[0].object_type, "Group");
@@ -577,7 +600,8 @@ mod tests {
             RestrictedGroupOperation::AddToParentGroups,
             &["S-1-5-32-555"],
         );
-        let merged = compute_merged(&[&g], &FakeResolver);
+        let domain= "ESSOS.LOCAL";
+        let merged = compute_merged(&[&g], &FakeResolver, domain);
         assert_eq!(merged.remote_desktop_users.len(), 1);
         assert_eq!(merged.remote_desktop_users[0].sid, "S-1-5-21-1-1-1200");
         assert!(merged.local_admins.is_empty());
@@ -590,7 +614,8 @@ mod tests {
             RestrictedGroupOperation::ReplaceMembers,
             &["*ALICE"],
         );
-        let merged = compute_merged(&[&g], &FakeResolver);
+        let domain= "ESSOS.LOCAL";
+        let merged = compute_merged(&[&g], &FakeResolver, domain);
         assert_eq!(merged.local_admins.len(), 1);
         assert_eq!(merged.local_admins[0].sid, "S-1-5-21-1-1-1105");
     }
