@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.5.20 - 2026-09-30
+
+### Added
+- `Computer`:`LocalGroups` is now collected live over MS-SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69)): each host's BUILTIN aliases (`SamrOpenAlias` / `SamrGetMembersInAlias`) feed the `AdminTo` (544), `CanRDP` (555), `ExecuteDCOM` (562) and `CanPSRemote` (580) edges. Reuses the SMB transport, so it works over password, pass-the-hash and Kerberos. Prototyped in [LocalGroups-rs](https://github.com/g0h4n/LocalGroups-rs).
+- New collection method `-c LocalGroup` (LDAP + SAMR); also runs under `All`. Member `ObjectType` is resolved from the LDAP `sid_type` map (User / Group / Computer) instead of a generic fallback.
+- `SeRemoteInteractiveLogonRight` is synthesized on every host ({Administrators, Remote Desktop Users}), as SharpHound does, so `CanRDP` resolves on domain controllers.
+
+### Fixed
+- Well-known SIDs (`S-1-5-32-*`, `S-1-5-9`, `S-1-5-11`, …) in GPO-resolved principals are emitted as `<DOMAIN>-<SID>`, matching SharpHound's `GetWellKnownPrincipalObjectIdentifier`, so their edges attach to the graph node instead of dangling.
+
+### Changed
+- Bumped `dcerpc` to `0.2.11` (public SMB pipe required by the SAMR path) and added `windows-sddl`.
+- `ROADMAP.md` updated: `Computer` 62.2% => 68.9%, overall coverage 84.3% => 85.7% (503 / 587).
+
 ## 2.5.14 - 2026-09-17
 
 ### Fixed
