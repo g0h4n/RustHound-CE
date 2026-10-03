@@ -31,14 +31,15 @@ impl From<Esc8Result> for Esc8Data {
 
 /// Probe web enrollment endpoints for a single Enterprise CA.
 ///
-/// Always returns two endpoints, including when the host is unreachable: a
-/// negative probe is reported, not dropped. Returns the empty default only when
+/// Always returns the two certsrv endpoints, including when the host is
+/// unreachable: a negative probe is reported, not dropped. CES endpoints are
+/// added when `ca_name` is non-empty. Returns the empty default only when
 /// `dns_host` is empty, since there is no URL to build in that case.
 /// DCOnly guard is handled by the caller (`run_modules`).
-pub fn probe_enterpriseca_esc8(dns_host: &str) -> Esc8Data {
+pub fn probe_enterpriseca_esc8(dns_host: &str, ca_name: &str) -> Esc8Data {
     if dns_host.is_empty() {
         log::debug!("[adcs] ESC8 probe skipped: CA has no dnshostname");
         return Esc8Data::default();
     }
-    Esc8Data::from(check_esc8(dns_host))
+    Esc8Data::from(check_esc8(dns_host, ca_name))
 }
