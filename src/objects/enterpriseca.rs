@@ -91,6 +91,11 @@ impl EnterpriseCA {
         &self.properties.dnshostname
     }
 
+    // Short (common) name of the CA
+    pub fn caname(&self) -> &str {
+        &self.properties.caname
+    }
+
     // Inject ESC8 probe results into this EnterpriseCA.
     pub fn apply_esc8(&mut self, endpoints: Vec<WebEnrollmentEndpoint>) {
         self.http_enrollment_endpoints = endpoints;
