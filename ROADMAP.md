@@ -45,9 +45,9 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 | [Container](#container) | 26 | 24 | 2 | `█████████░` 92.3% |
 | [Domain](#domain) | 55 | 50 | 5 | `█████████░` 90.9% |
 | [IssuancePolicies](#issuancepolicies) | 27 | 21 | 6 | `████████░░` 77.8% |
-| [EnterpriseCA](#enterpriseca) | 70 | 51 | 19 | `███████░░░` 72.9% |
+| [EnterpriseCA](#enterpriseca) | 70 | 52 | 18 | `███████░░░` 74.3% |
 | [Computer](#computer) | 119 | 82 | 37 | `███████░░░` 68.9% |
-| **Total** | **587** | **503** | **84** | **`█████████░` 85.7%** |
+| **Total** | **587** | **504** | **83** | **`█████████░` 85.9%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
 > `LocalGroups` is now collected over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69));
@@ -644,7 +644,7 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
     - [x] `Result`:`ADCSWebEnrollmentEPA` :white_check_mark:
     - [x] `Collected` :white_check_mark: (`true` when the port answered or is closed, `false` when the HTTP exchange failed)
     - [x] `FailureReason` :white_check_mark:
-    - [ ] CES endpoints, `/{CAName}_CES_Kerberos/service.svc` with `Type`: `EnrollmentWebService` :red_circle: :new: (SharpHound probes 4 URLs per CA, we probe 2)
+    - [x] CES endpoints, `/{CAName}_CES_{Kerberos,NTLM}/service.svc/CES` with `Type`: `CertificateEnrollmentWebService` :white_check_mark:
 - [x] `Aces`:`PrincipalSID` :white_check_mark:
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:

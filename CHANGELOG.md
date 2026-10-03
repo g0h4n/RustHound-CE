@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.21 - 2026-10-03
+
+### Added
+- ESC8 now probes Certificate Enrollment Web Service (CES) endpoints in addition to classic `/certsrv/` web enrollment ([#73](https://github.com/g0h4n/RustHound-CE/issues/73)): `<CAName>_CES_Kerberos` and `<CAName>_CES_NTLM` (`/service.svc/CES`) are each probed over HTTP and HTTPS, reusing the existing TCP pre-check and NTLM Type 1/Type 2 EPA (Channel Binding) detection. Results are emitted in `HttpEnrollmentEndpoints` with `Type: CertificateEnrollmentWebService`; the two `/certsrv/` endpoints are still always reported. CES is a second NTLM-relay surface to AD CS. Ref: [ADHDMurky](https://adhdmurky.github.io/posts/post4/).
+- `EnterpriseCA::caname()` getter, used to build the CES virtual-directory path; the CA short name is threaded from `run_modules` down to `check_esc8`.
+
 ## 2.5.20 - 2026-09-30
 
 ### Added
