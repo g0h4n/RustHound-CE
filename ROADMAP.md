@@ -87,7 +87,10 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 - [x] Session-collection feature, enumerates active sessions over three native RPC paths (SRVSVC, WKSSVC, WINREG) :white_check_mark:
 - [x] GPO-based collection from SYSVOL, reads `GptTmpl.inf` and `Groups.xml`, GPOChanges (LocalAdmins / RemoteDesktopUsers / DcomUsers / PSRemoteUsers) :white_check_mark:
 - [x] Local group enumeration over SAMR (`LocalGroups`, feeds `AdminTo` / `CanRDP` / `CanPSRemote` / `ExecuteDCOM`) :white_check_mark: :new:
-- [ ] Remote registry collection (`NTLMRegistryData`, `DCRegistryData`, `CARegistryData`) :red_circle: :new:
+- [ ] Remote registry collection over MS-RRP (`\winreg` over SMB) :red_circle: :new:
+    - [ ] `CARegistryData` (EnrollmentAgentRestrictions, IsUserSpecifiesSanEnabled, RoleSeparationEnabled)
+    - [ ] `DCRegistryData` (CertificateMappingMethods, StrongCertificateBindingEnforcement, VulnerableNetlogonSecurityDescriptor)
+    - [ ] `NTLMRegistryData` (LmCompatibilityLevel, SMB signing, NtlmMinSec, RestrictNtlmTraffic, …)
 - [ ] SMB signing probe (`SmbInfo`) :red_circle: :new:
 - [ ] WebClient/WebDAV service probe (`IsWebClientRunning`, prerequisite for ESC8 / coercion paths) :red_circle: :new:
 - [x] HTTP enrollment endpoints probe (`HttpEnrollmentEndpoints`, ADCS web enrollment over HTTP/HTTPS/EPA) :white_check_mark:
