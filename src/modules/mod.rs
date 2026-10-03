@@ -63,13 +63,13 @@ pub async fn run_modules(
             "Starting ESC8 web enrollment probe on {} CA(s)...",
             ad.enterprisecas.len()
         );
-        let hosts: Vec<String> = ad
+        let targets: Vec<(String, String)> = ad
             .enterprisecas
             .iter()
-            .map(|ca| ca.dns_host().to_string())
+            .map(|ca| (ca.dns_host().to_string(), ca.caname().to_string()))
             .collect();
-        let probes = future::join_all(hosts.into_iter().map(|host| {
-            tokio::task::spawn_blocking(move || probe_enterpriseca_esc8(&host))
+        let probes = future::join_all(targets.into_iter().map(|(host, ca_name)| {
+            tokio::task::spawn_blocking(move || probe_enterpriseca_esc8(&host, &ca_name))
         }))
         .await;
         for (ca, probe) in ad.enterprisecas.iter_mut().zip(probes) {
