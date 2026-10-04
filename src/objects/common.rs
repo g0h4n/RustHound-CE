@@ -268,6 +268,32 @@ impl Default for DCRegistryData {
    }
 }
 
+/// IsWebClientRunning structure (issue #72).
+///
+/// `Result` is `true` when the WebClient (WebDAV) `\PIPE\DAV RPC SERVICE` pipe
+/// opened on the host, which makes it an ESC8 / coercion relay candidate.
+/// `Collected` is `false` by default so an unprobed host (DCOnly, filtered out,
+/// or unreachable) is not misread as "WebClient confirmed off".
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WebClientRunning {
+   #[serde(rename = "Result")]
+   pub result: bool,
+   #[serde(rename = "Collected", default)]
+   pub collected: bool,
+   #[serde(rename = "FailureReason")]
+   pub failure_reason: Option<String>,
+}
+
+impl Default for WebClientRunning {
+   fn default() -> WebClientRunning {
+      WebClientRunning {
+         result: false,
+         collected: false,
+         failure_reason: None,
+      }
+   }
+}
+
 /// RegistryData structure
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct RegistryData {

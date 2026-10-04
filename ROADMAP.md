@@ -5,6 +5,7 @@
 - [Authentification](#authentification)
 - [Outputs](#outputs)
 - [Modules](#modules)
+- [Arguments](#arguments)
 - [List of attributes](#list-of-attributes)
     - [Domain](#domain)
     - [Computer](#computer)
@@ -92,8 +93,22 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
     - [ ] `DCRegistryData` (CertificateMappingMethods, StrongCertificateBindingEnforcement, VulnerableNetlogonSecurityDescriptor)
     - [ ] `NTLMRegistryData` (LmCompatibilityLevel, SMB signing, NtlmMinSec, RestrictNtlmTraffic, …)
 - [ ] SMB signing probe (`SmbInfo`) :red_circle: :new:
-- [ ] WebClient/WebDAV service probe (`IsWebClientRunning`, prerequisite for ESC8 / coercion paths) :red_circle: :new:
+- [x] WebClient/WebDAV service probe (`IsWebClientRunning`, prerequisite for ESC8 / coercion paths) :white_check_mark:
 - [x] HTTP enrollment endpoints probe (`HttpEnrollmentEndpoints`, ADCS web enrollment over HTTP/HTTPS/EPA) :white_check_mark:
+
+## Arguments
+
+> :new: Planned. A shared **SMB / RPC collection** option group that paces and bounds every machine-contacting module. These flags MUST be consumed by *all* scan modules, `Session`, `LocalGroup`, `WebClient`, and the future MS-RRP registry collectors, instead of the per-module constants hard-coded today.
+
+- [ ] `--workers` :red_circle: :new: max concurrent in-flight SMB sessions (bounded stream), default 50. Replaces the per-module `DEFAULT_CONCURRENCY`
+- [ ] `--throttle` :red_circle: :new: base delay before each SMB/RPC connection, ms (SharpHound `--Throttle`), default 0
+- [ ] `--jitter` :red_circle: :new: random extra delay added on top of `--throttle`, ms (SharpHound `--Jitter`), default 0
+- [ ] `--smb-timeout` :red_circle: :new: TCP/445 reachability pre-check timeout, ms, default 1000. Replaces `DEFAULT_PORT_TIMEOUT_MS`
+- [ ] `--host-timeout` :red_circle: :new: whole per-host budget (connect + auth + probe), ms, default 8000. Replaces `DEFAULT_HOST_TIMEOUT_MS`
+- [ ] `--computer-expiry-days` :red_circle: :new: only probe computers whose `pwdLastSet` is within N days (SharpHound `ComputerExpiryDays`), default 60, replaces `DEFAULT_EXPIRY_DAYS`
+- [ ] `--opsec` :red_circle: :new: stealth preset: shuffles target order, lowers `--workers`, adds `--throttle`/`--jitter` (without overriding values set explicitly on the CLI)
+
+> Centralising these in a single `SmbOptions` struct (new `.next_help_heading("SMB / RPC COLLECTION")` block in `args.rs`) removes the duplicated `DEFAULT_CONCURRENCY` / `DEFAULT_PORT_TIMEOUT_MS` / `DEFAULT_HOST_TIMEOUT_MS` / `DEFAULT_EXPIRY_DAYS` constants currently living in `session`, `localgroup` and `webclient`, and lets the operator trade speed for stealth across the whole collection at once.
 
 ## List of attributes
 
@@ -227,7 +242,7 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 - [x] `UserRights`:`LocalNames` :white_check_mark: (emitted but always empty, rebuilt from `GptTmpl.inf`)
 - [x] `UserRights`:`Collected` :white_check_mark:
 - [x] `UserRights`:`FailureReason` :white_check_mark:
-- [ ] `DCRegistryData` :red_circle: need RPC call and [GetRegistryKeyData src Helper.cs](https://github.com/BloodHoundAD/SharpHoundCommon/blob/v3/src/CommonLib/Helpers.cs#L278) — the keys are emitted as a raw `null` instead of the `{Collected, FailureReason, Value}` wrapper
+- [ ] `DCRegistryData` :red_circle: need RPC call and [GetRegistryKeyData src Helper.cs](https://github.com/BloodHoundAD/SharpHoundCommon/blob/v3/src/CommonLib/Helpers.cs#L278), the keys are emitted as a raw `null` instead of the `{Collected, FailureReason, Value}` wrapper
     - [ ] `CertificateMappingMethods`:`Value` :red_circle:
     - [ ] `CertificateMappingMethods`:`Collected` :red_circle:
     - [ ] `CertificateMappingMethods`:`FailureReason` :red_circle:
@@ -739,7 +754,4 @@ Items found while diffing the two collections that are not feature gaps, but are
 - `Properties`:`description` is emitted on object types where SharpHound does not produce it (Domain, AIACA, RootCA, EnterpriseCA, NtAuthStore, CertTemplate, IssuancePolicy). Extra data, harmless for the ingest.
 - `DomainSID` is emitted at node level on AIACA / RootCA / NtAuthStore, which SharpHound does not do.
 - `Links` is emitted on GPO nodes and is always empty. SharpHound does not emit the key at all on that node type.
-- `UserRights` is rebuilt from `GptTmpl.inf` and returns the full privilege set of the applied GPOs (24 privileges on the test DC), while SharpHound only reports `SeRemoteInteractiveLogonRight` read remotely. The two sources are not equivalent and `LocalNames` is always empty on the `rusthound-ce` side.
 - Container scope differs: SharpHound also walks `CN=Operations,CN=ForestUpdates,CN=Configuration` (131 extra containers on the test domain), `rusthound-ce` does not. Conversely `rusthound-ce` emits `CN=Deleted Objects` and `CN=MicrosoftDNS` containers that SharpHound skips.
-- Well-known principals are not stubbed the same way. SharpHound emits placeholder group nodes carrying `reconcile: false` (`EVERYONE`, `AUTHENTICATED USERS`, `INTERACTIVE`, builtin local groups, ...) and user stubs such as `IUSR` and `NETWORK SERVICE`; `rusthound-ce` emits a different subset (`ENTERPRISE DOMAIN CONTROLLERS`, `THIS ORGANIZATION`, `REPLICATOR`, and a `NT AUTHORITY` user node).
-- Attributes that could not be arbitrated on the test domain because both collectors returned an empty value: `Trusts`:* (no trust configured), `AIACA`:`crosscertificatepair`, `EnterpriseCA`:`unresolvedpublishedtemplates`, `User`:`email` / `title` / `homedirectory` / `profilepath` / `logonscript` / `userpassword` / `unixpassword` / `unicodepassword` / `sfupassword`, `sidhistory`, `DumpSMSAPassword`, `AllowedToAct`.

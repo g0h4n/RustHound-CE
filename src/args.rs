@@ -49,13 +49,14 @@ impl Options {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CollectionMethod {
-    All,            // LDAP + Session (all three RPC paths) + SMB on SYSVOL + LovalGroup 
+    All,            // LDAP + Session (all three RPC paths) + SMB on SYSVOL + LocalGroup 
     DCOnly,         // LDAP only, never contacts a machine + SMB on SYSVOL
     Session,        // LDAP + SRVSVC + WKSSVC + WINREG 
     RegistryOnly,   // LDAP + WINREG
     LdapOnly,       // LDAP
     GPOLocalGroup,  // LDAP + GPOLocalGroup with SMB on SYSVOL
     LocalGroup,     // LDAP + RPC SAMR
+    WebClient       // LDAP + SMB WebDAV pipe probe (IsWebClientRunning)
 }
 
 impl CollectionMethod {
@@ -65,6 +66,7 @@ impl CollectionMethod {
     pub fn registry(&self)          -> bool { matches!(self, Self::All | Self::Session | Self::RegistryOnly) }
     pub fn does_gpo(&self)          -> bool { matches!(self, Self::All | Self::DCOnly | Self::GPOLocalGroup) }
     pub fn does_local_group(&self)  -> bool { matches!(self, Self::All | Self::LocalGroup) }
+    pub fn does_web_client(&self)   -> bool { matches!(self, Self::All | Self::WebClient) }
 }
 
 // Current RustHound version
@@ -175,9 +177,9 @@ fn cli() -> Command {
     .arg(Arg::new("collectionmethod")
         .short('c')
         .long("collectionmethod")
-        .help("Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroups (LDAP + SAMR BUILTIN alias membership) (default: All)")
+        .help("Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroups (LDAP + SAMR BUILTIN alias membership), WebClient (LDAP + SMB WebDAV pipe probe for IsWebClientRunning) (default: All)")
         .value_name("COLLECTIONMETHOD")
-        .value_parser(["All", "DCOnly", "Session", "RegistryOnly", "LdapOnly", "GPOLocalGroup", "LocalGroup"])
+        .value_parser(["All", "DCOnly", "Session", "RegistryOnly", "LdapOnly", "GPOLocalGroup", "LocalGroup", "WebClient"])
         .num_args(0..=1)
         .default_missing_value("All")
     )
@@ -326,6 +328,7 @@ pub fn extract_args() -> Options {
         "LdapOnly"      => CollectionMethod::LdapOnly,
         "GPOLocalGroup" => CollectionMethod::GPOLocalGroup,
         "LocalGroup"    => CollectionMethod::LocalGroup,
+        "WebClient"     => CollectionMethod::WebClient,
         _               => CollectionMethod::All,
     };
     let ldap_filter = matches.get_one::<String>("ldap-filter").map(|s| s.as_str()).unwrap_or("(objectClass=*)");

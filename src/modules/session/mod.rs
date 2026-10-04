@@ -32,7 +32,6 @@ use std::sync::Arc;
 
 use futures::stream::{self, StreamExt};
 use log::{debug, info, trace, warn};
-use tokio::net::TcpStream;
 use tokio::sync::Semaphore;
 use tokio::time::{timeout, Duration};
 
@@ -40,7 +39,7 @@ use dcerpc::rrp::{RegistryClient, RegistrySession};
 use dcerpc::srvsvc::SrvsvcClient;
 use dcerpc::wkssvc::{WkstaUser, WkstaUserClient};
 use smb2_client::SmbClient;
-use crate::transport::smb::{connect_ipc, open_rpc_pipe, smb_user, SmbAuth};
+use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_user, SmbAuth};
 
 use crate::args::{CollectionMethod, Options};
 use crate::objects::common::UserComputerSession;
@@ -86,7 +85,7 @@ pub async fn run(
     let expiry_days = DEFAULT_EXPIRY_DAYS;
     let targets: Vec<(String, String)> = computers
         .iter()
-        .filter(|c| is_active(c, expiry_days))
+        .filter(|c| c.is_active(expiry_days))
         .map(|c| (c.properties().name().clone(), c.object_identifier().clone()))
         .collect();
 
@@ -234,23 +233,8 @@ async fn enumerate_host(
     }
 }
 
-// Reachability + activity helpers
-async fn is_reachable(host: &str, port_timeout_ms: u64) -> bool {
-    matches!(
-        timeout(Duration::from_millis(port_timeout_ms),
-                TcpStream::connect(format!("{host}:445"))).await,
-        Ok(Ok(_))
-    )
-}
-
-/// enabled + pwdLastSet within the expiry window (~ SharpHound ComputerExpiryDays).
-fn is_active(c: &Computer, expiry_days: i64) -> bool {
-    if !*c.properties().enabled() { return false; }
-    let pls = c.properties().pwdlastset();
-    if pls <= 0 { return false; }
-    let now = chrono::Utc::now().timestamp();
-    now - pls < expiry_days * 86_400
-}
+// Reachability + activity helpers moved to transport::smb::is_reachable
+// and Computer::is_active (shared with the local-group and webclient modules).
 
 // Isolated RPC calls (unchanged from HasSession-rs)
 async fn srvsvc_sessions(smb: &mut SmbClient, host: &str) -> anyhow::Result<(Vec<SmbSession>, u32)> {
