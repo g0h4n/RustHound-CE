@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.22 - 2026-10-04
+
+### Added
+- WebClient/WebDAV service probe (`IsWebClientRunning`, issue #72): for each active computer, opens the `\PIPE\DAV RPC SERVICE` named pipe over SMB and fills `Computer:IsWebClientRunning` (`{ Result, Collected, FailureReason }`), flagging ESC8 / coercion relay candidates. New `-c WebClient` collection method (also runs under `All`). Detection technique by [@tifkin_](https://x.com/tifkin_/status/1419806476353298442); ported from [IsWebClientRunning-rs](https://github.com/g0h4n/IsWebClientRunning-rs).
+
+### Changed
+- Shared `transport::smb::is_reachable()` and `Computer::is_active()` across the sessions, local-group and webclient modules (removed the duplicated private copies in `session`).
+- `ROADMAP.md`: `IsWebClientRunning` marked implemented; new planned `Arguments` section (shared SMB/RPC `--workers` / `--throttle` / `--jitter` / timeouts / `--opsec`).
+
 ## 2.5.21 - 2026-10-03
 
 ### Added
