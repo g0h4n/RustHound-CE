@@ -100,6 +100,7 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 
 > :new: Planned. A shared **SMB / RPC collection** option group that paces and bounds every machine-contacting module. These flags MUST be consumed by *all* scan modules, `Session`, `LocalGroup`, `WebClient`, and the future MS-RRP registry collectors, instead of the per-module constants hard-coded today.
 
+- [ ] Multi-value `-c` / `CollectionMethods` :red_circle: :new: accept several collection methods at once, comma-separated or repeated (`-c LocalGroup,WebClient` or `-c LocalGroup -c WebClient`). Replaces the single-value `CollectionMethod` enum with a `CollectionMethods` set; `DCOnly` / `LdapOnly` stay dominant no-machine scopes that suppress every member-machine collector even when combined. Today `-c` takes a single value (`All` is the only way to run several collectors together).
 - [ ] `--workers` :red_circle: :new: max concurrent in-flight SMB sessions (bounded stream), default 50. Replaces the per-module `DEFAULT_CONCURRENCY`
 - [ ] `--throttle` :red_circle: :new: base delay before each SMB/RPC connection, ms (SharpHound `--Throttle`), default 0
 - [ ] `--jitter` :red_circle: :new: random extra delay added on top of `--throttle`, ms (SharpHound `--Jitter`), default 0
