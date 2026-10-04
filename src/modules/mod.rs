@@ -4,6 +4,7 @@ pub mod gpo;
 pub mod resolver;
 pub mod session;
 pub mod localgroup;
+pub mod webclient;
 
 use std::error::Error;
 
@@ -122,6 +123,12 @@ pub async fn run_modules(
     // Auth reuses SmbAuth (password / hash / ticket); complements #56 (GPO).
     if common_args.collection_method.does_local_group() && !cert_auth {
         localgroup::run(common_args, &ad.users, &mut ad.computers, &ad.mappings.sid_type).await?;
+    }
+
+    // [MODULE - IS WEBCLIENT RUNNING] CHeck if WebDAV web client is running on servers/computers (issue #72)
+    // <https://github.com/g0h4n/IsWebClientRunning-rs>
+    if common_args.collection_method.does_web_client() && !cert_auth {
+        webclient::run(common_args, &mut ad.computers).await?;
     }
 
     // Other modules need to be add here...
