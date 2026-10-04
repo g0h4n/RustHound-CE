@@ -14,8 +14,11 @@
 
 use log::{debug, error, trace, warn};
 use smb2_client::{SmbClient, SmbError};
+use tokio::net::TcpStream;
+use tokio::time::{timeout, Duration};
 
 pub use smb2_client::msg::DirEntry;
+
 
 /// STATUS_OBJECT_PATH_NOT_FOUND (intermediate directory missing).
 const OBJECT_PATH_NOT_FOUND: u32 = 0xC000_003A;
@@ -222,4 +225,19 @@ pub fn smb_user(raw: &str) -> String {
     let no_upn = raw.split('@').next().unwrap_or(raw);
     let bare = no_upn.rsplit('\\').next().unwrap_or(no_upn);
     bare.to_string()
+}
+
+/// SharpHound-style reachability pre-check: is `host:445` accepting TCP within
+/// `port_timeout_ms`? Run before any SMB work so a dead host is skipped quickly
+/// instead of eating the full connect budget. Shared by the sessions,
+/// local-group and webclient modules.
+pub async fn is_reachable(host: &str, port_timeout_ms: u64) -> bool {
+    matches!(
+        timeout(
+            Duration::from_millis(port_timeout_ms),
+            TcpStream::connect(format!("{host}:445")),
+        )
+        .await,
+        Ok(Ok(_))
+    )
 }

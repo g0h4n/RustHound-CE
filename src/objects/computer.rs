@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use crate::enums::{OBJECT_SID_RE1, SID_PART1_RE1, decode_guid_le};
-use crate::objects::common::{LdapObject, Session, AceTemplate, Member, SPNTarget, LocalGroup, Link, DCRegistryData};
+use crate::objects::common::{LdapObject, Session, AceTemplate, Member, SPNTarget, LocalGroup, Link, DCRegistryData, WebClientRunning};
 use crate::utils::date::{convert_timestamp,string_to_epoch};
 use crate::utils::crypto::convert_encryption_types;
 use crate::enums::acl::{
@@ -58,6 +58,8 @@ pub struct Computer {
     users_rights: Vec<UserRight>,
     #[serde(rename = "DCRegistryData")]
     dcregistry_data: DCRegistryData,
+    #[serde(rename = "IsWebClientRunning")]
+    is_web_client_running: WebClientRunning,
 
     #[serde(rename = "IsDC")]
     is_dc: bool,
@@ -87,6 +89,20 @@ impl Computer {
         &self.allowed_to_act
     }
 
+    /// Active = enabled AND pwdLastSet within the expiry window
+    /// Shared by the machine-contacting modules (sessions, local-group, webclient) to skip stale/dead accounts
+    pub fn is_active(&self, expiry_days: i64) -> bool {
+        if !*self.properties().enabled() {
+            return false;
+        }
+        let pls = self.properties().pwdlastset();
+        if pls <= 0 {
+            return false;
+        }
+        let now = chrono::Utc::now().timestamp();
+        now - pls < expiry_days * 86_400
+    }
+
     // Mutable access.
     pub fn allowed_to_act_mut(&mut self) -> &mut Vec<Member> {
         &mut self.allowed_to_act
@@ -99,6 +115,9 @@ impl Computer {
     }
     pub fn registry_sessions_mut(&mut self) -> &mut Session {
         &mut self.registry_sessions
+    }
+    pub fn set_is_web_client_running(&mut self, value: WebClientRunning) {
+        self.is_web_client_running = value;
     }
     pub fn users_rights_mut(&mut self) -> &mut Vec<UserRight> {
         &mut self.users_rights
