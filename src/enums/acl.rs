@@ -10,7 +10,7 @@ use crate::enums::constants::*;
 use crate::enums::secdesc::*;
 use crate::enums::sid::sid_maker;
 use bitflags::bitflags;
-use log::{error, trace};
+use log::{error, trace, warn};
 
 /// Node-level OWNER RIGHTS summary: `(doesanyacegrantownerrights,
 /// doesanyinheritedacegrantownerrights)`. Per-ACE flags are set by
@@ -433,6 +433,26 @@ fn ace_maker<T: LdapObject>(
                         sid.to_owned(),
                         "".to_string(),
                         "WriteSPN".to_string(),
+                        is_inherited,
+                        "".to_string(),
+                    ));
+                }
+                // WriteProperty on the RDN (Relative Distinguished Name / "name") attribute.
+                // https://github.com/g0h4n/RustHound-CE/issues/78
+                // A WriteProperty ACE scoped to the RDN attribute (schemaIDGUID
+                // bf967a0e-0de6-11d0-a285-00aa003049e2, schema name "RDN", lDAPDisplayName
+                // "name") lets the trustee rename the target object. Because the ObjectType
+                // is present, this is NOT GenericWrite, so SharpHound/BloodHound.py drop it.
+                // We surface it here as a dedicated WriteRDN edge.
+                if ((entry_type == "User") || (entry_type == "Group") || (entry_type == "Computer") || (entry_type == "Gpo") || (entry_type == "OU"))
+                    && (&flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT)
+                    && (&ace_guid == guid_map.get("rdn").unwrap_or(&String::from("GUID-NOT-FOUND")))
+                {
+                    warn!("WriteRDN ACE: {} has WriteProperty on the RDN/name of {} (rename primitive, not graphed by BloodHound's native ingest; see issue #78)", sid, object.get_object_identifier());
+                    relations.push(AceTemplate::new(
+                        sid.to_owned(),
+                        "".to_string(),
+                        "WriteRDN".to_string(),
                         is_inherited,
                         "".to_string(),
                     ));
