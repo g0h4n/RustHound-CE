@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.23 - 2026-10-07
+
+### Fixed
+- `HasSIDHistory` is now emitted as typed principals (`{ObjectIdentifier, ObjectType}`) for users, groups and computers ([#79](https://github.com/g0h4n/RustHound-CE/issues/79)), instead of a raw SID string list that recent BloodHound CE rejected at ingestion (`cannot unmarshal string ... into ein.TypedPrincipal`). ObjectType is resolved in the checker via the global `sid_type` map (`Base` fallback).
+- LDAP range retrieval: groups with more than 1499 members no longer return an empty `Members` array ([#76](https://github.com/g0h4n/RustHound-CE/issues/76)). Ranged attribute requests (`member;range=0-*`) are now paged until the server returns all entries, restoring `MemberOf` relationships on large groups.
+- Floating point exception during the session collection phase ([#77](https://github.com/g0h4n/RustHound-CE/issues/77)): guard against a division by zero when computing progress over an empty active-target set.
+
+### Added
+- WriteProperty ACE mapping on an object's RDN ([#78](https://github.com/g0h4n/RustHound-CE/issues/78)): WriteProperty rights applied directly to the Relative Distinguished Name are now detected and emitted as the corresponding edge, matching bloodyAD. `WriteRDN`
+
 ## 2.5.22 - 2026-10-04
 
 ### Added

@@ -2973,7 +2973,7 @@ dependencies = [
 
 [[package]]
 name = "rusthound-ce"
-version = "2.5.22"
+version = "2.5.23"
 dependencies = [
  "anyhow",
  "bincode",
