@@ -1,11 +1,8 @@
 //! LDAP authentication and collection.
 //!
-//! Public entry point:
-//!   * [`ldap_auth`] : connect + authenticate, returns a ready `Ldap` session.
-//!
-//! The full library workflow (auth + collect + parse + modules + output) is
-//! `api::run_collection`, which takes the authenticated session from `ldap_auth`.
-//! Collection itself is done by the crate-internal `collect_from_ldap_into`.
+//! [`ldap_auth`] connects and authenticates, returning a ready `Ldap` session.
+//! The full workflow is `api::run_collection`; collection itself is
+//! `collect_from_ldap_into`.
 
 use crate::args::Options;
 use crate::banner::progress_bar;
@@ -23,17 +20,11 @@ use std::io::{self, Write, stdin};
 use std::collections::HashMap;
 use std::error::Error;
 
-/// Connect to the Domain Controller and authenticate, returning a ready
-/// `ldap3::Ldap` session. The method is chosen from `options`:
-///
-///   - certificate  : `pfx` or `crt`/`key` present (Pass-the-Certificate)
-///   - pass-the-hash: `hashes` present (NTLM)
-///   - Kerberos     : `kerberos == true` (ccache from KRB5CCNAME)
-///   - simple bind  : otherwise (`username` / `password`)
-///
-/// Certificate auth uses LDAP 389 + StartTLS by default, or LDAPS 636 with
-/// `options.ldaps`. Returns `Err` on failure (no `process::exit`), and never
-/// unbinds — the caller owns the returned session.
+/// Connect to the DC and authenticate, returning a ready `ldap3::Ldap` session.
+/// The method is picked from `options`: certificate (`pfx` or `crt`/`key`),
+/// NTLM pass-the-hash (`hashes`), Kerberos (`kerberos`), else simple bind.
+/// Certificate auth defaults to StartTLS on 389, or LDAPS 636 with `--ldaps`.
+/// The caller owns the session (never unbound here).
 pub async fn ldap_auth(options: &Options) -> Result<ldap3::Ldap, Box<dyn Error>> {
     let use_cert = options.pfx.is_some() || options.crt.is_some();
 
@@ -150,10 +141,9 @@ pub async fn ldap_auth(options: &Options) -> Result<ldap3::Ldap, Box<dyn Error>>
     Ok(ldap)
 }
 
-/// Collect every namingContext of the DC into `storage`, returning the number
-/// of objects collected. Walks each context with the SD-flags and show-deleted
-/// controls and streams entries into `storage`. Returns `Err` on failure (no
-/// `process::exit`) and does not unbind/drop the session — the caller owns it.
+/// Collect every namingContext into `storage` and return the object count.
+/// Each context is walked with the SD-flags and show-deleted controls and
+/// streamed into `storage`. The caller owns the session.
 pub(crate) async fn collect_from_ldap_into<S: Storage<LdapSearchEntry>>(
     ldap: &mut ldap3::Ldap,
     ldapfilter: &str,
@@ -200,10 +190,16 @@ pub(crate) async fn collect_from_ldap_into<S: Storage<LdapSearchEntry>>(
             )
             .await?;
 
+        // Ranged-retrieval side channel (#76): a cloned `Ldap` handle multiplexes
+        // the follow-up queries over the same connection while the main stream is
+        // consumed. The controls above were already taken by the search
+        let mut ranged_ldap = ldap.clone();
+
         let pb = ProgressBar::new(1);
         let mut count = 0;
         while let Some(entry) = search.next().await? {
-            let entry = SearchEntry::construct(entry);
+            let mut entry = SearchEntry::construct(entry);
+            complete_ranged_attributes(&mut ranged_ldap, &mut entry).await?;
             total += 1;
             count += 1;
             progress_bar(
@@ -224,6 +220,102 @@ pub(crate) async fn collect_from_ldap_into<S: Storage<LdapSearchEntry>>(
 
     storage.flush()?;
     Ok(total)
+}
+
+/// Complete attributes truncated by AD ranged retrieval, then re-key the values
+/// under the plain attribute name so parsers (e.g. the `"member"` arm in
+/// `objects::group`) see them unchanged.
+///
+/// Past `MaxValRange` (default 1500) AD renames an attribute to
+/// `attr;range=0-1499` and drops the plain key, why groups with >1499 members
+/// looked empty (#76). Each chunk is fetched with base-scoped
+/// `attr;range=<next>-*` queries until the final `-*` chunk. Generic (covers
+/// `member`, `memberOf`, …); a no-op for normal entries.
+async fn complete_ranged_attributes(
+    ldap: &mut ldap3::Ldap,
+    entry: &mut SearchEntry,
+) -> Result<(), Box<dyn Error>> {
+    // Attributes returned as `name;range=low-high` (AD may capitalise `Range`).
+    let ranged: Vec<(String, String)> = entry
+        .attrs
+        .keys()
+        .filter_map(|k| {
+            let (base, opt) = k.split_once(';')?;
+            if opt.to_ascii_lowercase().starts_with("range=") {
+                Some((k.to_string(), base.to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for (ranged_key, base_attr) in ranged {
+        // Take the first chunk's values, re-keyed under `base_attr` later.
+        let mut values = entry.attrs.remove(&ranged_key).unwrap_or_default();
+
+        let mut next_start = match range_high(&ranged_key) {
+            Some(high) => high + 1,
+            None => {
+                // Already `-*`: single chunk, just rename.
+                entry.attrs.entry(base_attr).or_default().append(&mut values);
+                continue;
+            }
+        };
+
+        debug!("Ranged attribute '{}' on {} exceeds MaxValRange; retrieving remaining values", base_attr.bold().yellow(), entry.dn.bold());
+
+        // Pull the remaining chunks: `base_attr;range=<next_start>-*`.
+        loop {
+            let want = format!("{base_attr};range={next_start}-*");
+            let (rs, _res) = ldap
+                .search(&entry.dn, Scope::Base, "(objectClass=*)", vec![want.as_str()])
+                .await?
+                .success()?;
+
+            let Some(re) = rs.into_iter().next() else { break };
+            let chunk = SearchEntry::construct(re);
+
+            // Find the returned ranged key.
+            let found = chunk.attrs.iter().find_map(|(k, _)| {
+                let (b, opt) = k.split_once(';')?;
+                if b.eq_ignore_ascii_case(&base_attr)
+                    && opt.to_ascii_lowercase().starts_with("range=")
+                {
+                    Some((k.clone(), opt.ends_with("-*")))
+                } else {
+                    None
+                }
+            });
+
+            let Some((key, is_last)) = found else { break };
+
+            if let Some(v) = chunk.attrs.get(&key) {
+                values.extend(v.iter().cloned());
+            }
+
+            if is_last {
+                break; // final chunk
+            }
+            match range_high(&key) {
+                Some(high) => next_start = high + 1,
+                None => break,
+            }
+        }
+
+        trace!("'{}' on {}: {} values after ranged retrieval", base_attr, entry.dn, values.len());
+        entry.attrs.entry(base_attr).or_default().append(&mut values);
+    }
+
+    Ok(())
+}
+
+/// High bound of a `...;range=low-high` descriptor. `None` for `-*` (final
+/// chunk) or an unparsable range — both meaning "complete" to the caller.
+fn range_high(key: &str) -> Option<usize> {
+    let opt = key.split(';').nth(1)?;      // range=low-high
+    let spec = opt.split_once('=')?.1;     // low-high
+    let high = spec.split_once('-')?.1;    // high
+    high.parse::<usize>().ok()
 }
 
 /// Structure containing the LDAP connection arguments.
@@ -473,6 +565,15 @@ impl From<LdapSearchEntry> for SearchEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn range_high_parsing() {
+        assert_eq!(range_high("member;range=0-1499"), Some(1499));
+        assert_eq!(range_high("member;range=1500-2999"), Some(2999));
+        assert_eq!(range_high("member;range=3000-*"), None); // final chunk
+        assert_eq!(range_high("member"), None); // not ranged
+        assert_eq!(range_high("member;range=bad"), None); // unparsable
+    }
 
     #[test]
     fn nt_hash_encoding_roundtrip() {
