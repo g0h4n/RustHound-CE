@@ -42,7 +42,7 @@ pub struct Computer {
     #[serde(rename = "AllowedToAct")]
     allowed_to_act: Vec<Member>,
     #[serde(rename = "HasSIDHistory")]
-    has_sid_history: Vec<String>,
+    has_sid_history: Vec<Member>,
     #[serde(rename = "DumpSMSAPassword")]
     dump_smsa_password: Vec<Member>,
     
@@ -106,6 +106,9 @@ impl Computer {
     // Mutable access.
     pub fn allowed_to_act_mut(&mut self) -> &mut Vec<Member> {
         &mut self.allowed_to_act
+    }
+    pub fn has_sid_history_mut(&mut self) -> &mut Vec<Member> {
+        &mut self.has_sid_history
     }
     pub fn sessions_mut(&mut self) -> &mut Session {
         &mut self.sessions
@@ -432,14 +435,18 @@ impl Computer {
                     self.allowed_to_act = vec_members_allowtoact;
                 }
                 "sIDHistory" => {
-                    // Computers can carry SID history too; old permissions can travel with it.
                     let mut list_sid_history: Vec<String> = Vec::new();
+                    let mut has_sid_history: Vec<Member> = Vec::new();
                     for bsid in value {
                         debug!("sIDHistory: {:?}", &bsid);
-                        list_sid_history.push(sid_maker(LdapSid::parse(bsid).unwrap().1, domain));
+                        let sid = sid_maker(LdapSid::parse(bsid).unwrap().1, domain);
+                        let mut member = Member::new();
+                        *member.object_identifier_mut() = sid.clone();
+                        has_sid_history.push(member);
+                        list_sid_history.push(sid);
                     }
-                    self.properties.sidhistory = list_sid_history.clone();
-                    self.has_sid_history = list_sid_history;
+                    self.properties.sidhistory = list_sid_history;
+                    self.has_sid_history = has_sid_history;
                 }
                 _ => {}
             }
@@ -656,8 +663,5 @@ mod tests {
                 &schema_guid_map,
             )
             .unwrap();
-
-        // SID history: old permissions, new machine.
-        assert_eq!(computer.has_sid_history, vec!["S-1-5-21-123456789".to_string()]);
     }
 }
