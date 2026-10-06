@@ -78,7 +78,9 @@ pub async fn run(
     }
 
     // 1) Build the name -> SID resolution table from the LDAP data collected upstream.
+    trace!("[sessions] building SID index from {} user(s)", users.len());
     let sid_index = build_sid_index(users);
+    trace!("[sessions] SID index built");
 
     // 2) Select ACTIVE targets only (enabled + pwdLastSet within the expiry window).
     //    The host is the computer FQDN (properties.name); no fqdn->ip lookup.
@@ -90,6 +92,9 @@ pub async fn run(
         .collect();
 
     info!("[sessions] {} active target(s) after expiry/enabled filter", targets.len());
+    for (h, _) in &targets {
+        trace!("[sessions] target host: {h}");
+    }
 
     // 3) Enumerate with bounded concurrency (throttle) instead of a serial loop.
     let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
@@ -113,6 +118,7 @@ pub async fn run(
         .or_else(|| args.ip.clone())
         .unwrap_or_else(|| args.domain.clone());
 
+    trace!("[sessions] starting concurrent enumeration (concurrency={DEFAULT_CONCURRENCY})");
     let findings: Vec<HostFindings> = stream::iter(targets)
         .map(|(host, computer_sid)| {
             let (sem, domain, user, password, method) =
@@ -121,16 +127,22 @@ pub async fn run(
             let kerberos_ccache = kerberos_ccache.clone();
             let kdc = kdc.clone();
             async move {
+                trace!("[sessions] [{host}] task scheduled, awaiting concurrency permit");
                 let _permit = sem.acquire().await.unwrap();
-                enumerate_host(
+                trace!("[sessions] [{host}] permit acquired, entering enumerate_host");
+                let hf = enumerate_host(
                     &host, computer_sid, &domain, &user, &password,
                     nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc, &method,
-                ).await
+                ).await;
+                trace!("[sessions] [{host}] enumerate_host returned ({} error(s))", hf.errors.len());
+                hf
             }
         })
         .buffer_unordered(DEFAULT_CONCURRENCY)
         .collect()
         .await;
+
+    trace!("[sessions] all {} host task(s) completed, folding findings", findings.len());
 
     // 4) Fold findings back into the matching Computer objects (resolving names -> SIDs).
     let mut total_sessions = 0usize;
@@ -154,6 +166,7 @@ async fn enumerate_host(
     kdc: &str,
     method: &CollectionMethod,
 ) -> HostFindings {
+    trace!("[sessions] [{host}] enumerate_host: begin, running 445 pre-check");
     // SharpHound-style reachability pre-check: 445 open within budget
     if !is_reachable(host, DEFAULT_PORT_TIMEOUT_MS).await {
         trace!("[{host}] 445/tcp unreachable - skip");
