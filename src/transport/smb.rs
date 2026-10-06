@@ -232,12 +232,15 @@ pub fn smb_user(raw: &str) -> String {
 /// instead of eating the full connect budget. Shared by the sessions,
 /// local-group and webclient modules.
 pub async fn is_reachable(host: &str, port_timeout_ms: u64) -> bool {
-    matches!(
-        timeout(
-            Duration::from_millis(port_timeout_ms),
-            TcpStream::connect(format!("{host}:445")),
-        )
-        .await,
-        Ok(Ok(_))
+    let target = format!("{host}:445");
+    trace!("[{host}] is_reachable: begin, target={target}, budget={port_timeout_ms}ms");
+    trace!("[{host}] is_reachable: >>> TcpStream::connect({target}) (name resolution happens here)");
+    let outcome = timeout(
+        Duration::from_millis(port_timeout_ms),
+        TcpStream::connect(target),
     )
+    .await;
+    let reachable = matches!(outcome, Ok(Ok(_)));
+    trace!("[{host}] is_reachable: <<< returned, reachable={reachable}");
+    reachable
 }
