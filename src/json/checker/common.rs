@@ -790,6 +790,48 @@ pub fn add_type_for_allowtedtoact(
     Ok(())
 }
 
+/// This function checks PrincipalSID for all HasSIDHistory objects and adds the PrincipalType ("Group", "User", "Computer")
+pub fn add_type_for_sidhistory(
+    vec_users:     &mut [User],
+    vec_groups:    &mut [Group],
+    vec_computers: &mut [Computer],
+    sid_type:      &HashMap<String, String>,
+) -> Result<(), Box<dyn Error>> {
+    let default_type = "Base".to_string();
+
+    vec_users.par_iter_mut().for_each(|user| {
+        for principal in user.has_sid_history_mut() {
+            let type_object = sid_type
+                .get(principal.object_identifier())
+                .unwrap_or(&default_type)
+                .clone();
+            *principal.object_type_mut() = type_object;
+        }
+    });
+
+    vec_groups.par_iter_mut().for_each(|group| {
+        for principal in group.has_sid_history_mut() {
+            let type_object = sid_type
+                .get(principal.object_identifier())
+                .unwrap_or(&default_type)
+                .clone();
+            *principal.object_type_mut() = type_object;
+        }
+    });
+
+    vec_computers.par_iter_mut().for_each(|computer| {
+        for principal in computer.has_sid_history_mut() {
+            let type_object = sid_type
+                .get(principal.object_identifier())
+                .unwrap_or(&default_type)
+                .clone();
+            *principal.object_type_mut() = type_object;
+        }
+    });
+
+    Ok(())
+}
+
 /// This function pushes user SID into ChildObjects for Ou v2
 pub fn add_contained_by_for<T: LdapObject + Send>(
     vec_replaced: &mut [T],

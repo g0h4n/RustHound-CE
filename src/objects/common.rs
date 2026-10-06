@@ -332,9 +332,9 @@ pub struct Member {
 impl Member {
    // New member.
     pub fn new() -> Self {
-      Self { 
+      Self {
          object_identifier: "SID".to_string(),
-         ..Default::default()
+         object_type: "Base".to_string(),
       }
    }
 

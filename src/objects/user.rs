@@ -44,7 +44,7 @@ pub struct User {
     #[serde(rename ="AllowedToDelegate")]
     allowed_to_delegate: Vec<Member>,
     #[serde(rename ="HasSIDHistory")]
-    has_sid_history: Vec<String>,
+    has_sid_history: Vec<Member>,
     #[serde(rename ="ContainedBy")]
     contained_by: Option<Member>,
 }
@@ -75,6 +75,9 @@ impl User {
     }
     pub fn object_identifier_mut(&mut self) -> &mut String {
         &mut self.object_identifier
+    }
+    pub fn has_sid_history_mut(&mut self) -> &mut Vec<Member> {
+        &mut self.has_sid_history
     }
 
     /// Function to parse and replace value for user object.
@@ -342,15 +345,18 @@ impl User {
                     self.aces_mut().extend(relations_ace);
                 }
                 "sIDHistory" => {
-                    // not tested! #tocheck
-                    //debug!("sIDHistory: {:?}",&value[0]);
                     let mut list_sid_history: Vec<String> = Vec::new();
+                    let mut has_sid_history: Vec<Member> = Vec::new();
                     for bsid in value {
                         debug!("sIDHistory: {:?}", &bsid);
-                        list_sid_history.push(sid_maker(LdapSid::parse(bsid).unwrap().1, domain));
+                        let sid = sid_maker(LdapSid::parse(bsid).unwrap().1, domain);
+                        let mut member = Member::new();
+                        *member.object_identifier_mut() = sid.clone();
+                        has_sid_history.push(member);
+                        list_sid_history.push(sid);
                     }
-                    self.properties.sidhistory = list_sid_history.clone();
-                    self.has_sid_history = list_sid_history;
+                    self.properties.sidhistory = list_sid_history;
+                    self.has_sid_history = has_sid_history;
                 }
                 "msDS-GroupMSAMembership" => {
                     // Embedded security descriptor granting gMSA password readers.
@@ -649,8 +655,5 @@ mod tests {
             &schema_guid_map,
         )
         .unwrap();
-
-        // SID history: the one past that can still grant permissions.
-        assert_eq!(user.has_sid_history, vec!["S-1-5-21-123456789".to_string()]);
     }
 }

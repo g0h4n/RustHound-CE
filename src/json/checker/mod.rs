@@ -79,6 +79,10 @@ pub fn check_all_result(
     common::add_type_for_allowtedtoact(vec_computers, sid_type)?;
     debug!("PrincipalType for ACEs added!");
 
+    debug!("Adding ObjectType for HasSIDHistory started");
+    common::add_type_for_sidhistory(vec_users, vec_groups, vec_computers, sid_type)?;
+    debug!("ObjectType for HasSIDHistory added!");
+
     debug!("Adding ChildObject members started");
     common::add_childobjects_members(vec_ous, dn_sid, sid_type)?;
     common::add_childobjects_members(vec_domains, dn_sid, sid_type)?;
