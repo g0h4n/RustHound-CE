@@ -162,6 +162,7 @@ impl CertTemplate {
                 "objectGUID" => {
                     // objectGUID raw to string
                     let guid = decode_guid_le(&value[0]);
+                    self.object_identifier = guid.to_owned();
                     self.properties.objectguid = guid;
                 }
                 "nTSecurityDescriptor" => {
