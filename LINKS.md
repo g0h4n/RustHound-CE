@@ -8,3 +8,4 @@
 - BloodHound Community Edition: [https://github.com/SpecterOps/BloodHound](https://github.com/SpecterOps/BloodHound)
 - GOAD: [https://github.com/Orange-Cyberdefense/GOAD](https://github.com/Orange-Cyberdefense/GOAD)
 - Podcast Hack'n Speak: [https://www.listennotes.com/fr/podcasts/hackn-speak/0x1a-g0h4n-retour-sur-la-loedqZh9PUw/](https://www.listennotes.com/fr/podcasts/hackn-speak/0x1a-g0h4n-retour-sur-la-loedqZh9PUw/)
+- Blog post "The origins of RustHound-CE": [https://blog.safetech.red/rusthound-ce/](https://blog.safetech.red/rusthound-ce/)

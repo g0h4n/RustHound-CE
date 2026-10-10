@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.24 - 2026-10-10
+
+Fix false-positive ACEs on Certificate Templates. The `ObjectIdentifier` was left unset on `certtemplates` objects, causing all certificate-related ACEs to be merged onto a single node and producing false positives in BloodHound CE. The `ObjectIdentifier` is now set per Certificate Template, so ACEs are correctly mapped to their own template node.
+
+Thanks a lot to [rtpt-romankarwacik](https://github.com/rtpt-romankarwacik) for your contribution! More information directly from the pull request [#84](https://github.com/g0h4n/RustHound-CE/pull/84)
+
 ## 2.5.23 - 2026-10-07
 
 ### Fixed
