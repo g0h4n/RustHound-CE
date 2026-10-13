@@ -318,35 +318,42 @@ pub fn get_pki_private_flags(value: u64) -> String
 }
 
 /// Function to replace displayname by SID in enabled cert templates.
+///
+/// The CA lists its published templates by name (`certificateTemplates`),
+/// which is the template's `name` attribute: its RDN in the forest's
+/// Certificate Templates container, so at most one template matches. The
+/// templates are keyed by that bare name (their `name` property without the
+/// `@DOMAIN` suffix) and looked up exactly, ignoring case. A substring match
+/// would link `User` to `ExchangeUser`, for example. Names without a
+/// template are dropped.
 pub fn templates_enabled_change_displayname_to_sid(
     vec_certtemplates: &mut [CertTemplate],
     vec_enterprisecas: &mut [EnterpriseCA],
 ) -> Result<(), Box<dyn Error>> {
     let mut name_sid: HashMap<String, String> = HashMap::new();
     for certtemplate in vec_certtemplates {
-        name_sid.insert(
-            certtemplate.properties().name().to_owned(),
-            certtemplate.object_identifier().to_owned(),
-         );
+        let full = certtemplate.properties().name().to_uppercase();
+        let name = full.rsplit_once('@').map_or(full.as_str(), |(name, _)| name);
+        let sid = certtemplate.object_identifier().to_owned();
+        // Two templates with the same name can't exist in one forest; if the
+        // data has them anyway, keep the smallest identifier so the result
+        // doesn't depend on the order the templates were read in.
+        name_sid
+            .entry(name.to_owned())
+            .and_modify(|current| {
+                if sid < *current {
+                    *current = sid.clone();
+                }
+            })
+            .or_insert(sid);
     }
-    // println!("{:?}",&name_sid);
 
     for enterprise_ca in vec_enterprisecas {
         let templates = enterprise_ca.enabled_cert_templates();
         let mut enabled_cert_templates: Vec<Member> = Vec::new();
         for template in templates {
             let mut member = Member::new();
-            let needle = template.object_identifier().to_uppercase();
-            // When several template names match, pick the smallest key
-            // deterministically instead of relying on HashMap iteration order
-            // (which otherwise makes the published-templates edges vary run-to-run,
-            // affecting ADCS attack-path analysis).
-            if let Some(value) = name_sid
-                .keys()
-                .filter(|key| key.contains(&needle))
-                .min()
-                .and_then(|key| name_sid.get(key))
-            {
+            if let Some(value) = name_sid.get(&template.object_identifier().to_uppercase()) {
                 *member.object_identifier_mut() = value.to_owned();
                 *member.object_type_mut() = template.object_type().to_owned();
                 enabled_cert_templates.push(member);
@@ -356,4 +363,93 @@ pub fn templates_enabled_change_displayname_to_sid(
         *enterprise_ca.enabled_cert_templates_mut() = enabled_cert_templates;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::templates_enabled_change_displayname_to_sid;
+    use crate::objects::{certtemplate::CertTemplate, common::Member, enterpriseca::EnterpriseCA};
+
+    /// A certificate template as the LDAP parser leaves it: `name` is
+    /// `NAME@DOMAIN`, upper case.
+    fn template(name: &str, guid: &str) -> CertTemplate {
+        let mut value = serde_json::to_value(CertTemplate::new()).unwrap();
+        value["Properties"]["name"] = format!("{name}@ESSOS.LOCAL").into();
+        value["ObjectIdentifier"] = guid.into();
+        serde_json::from_value(value).unwrap()
+    }
+
+    /// An Enterprise CA publishing `names`, as read from `certificateTemplates`.
+    fn ca(names: &[&str]) -> EnterpriseCA {
+        let mut ca = EnterpriseCA::new();
+        for name in names {
+            let mut member = Member::new();
+            *member.object_identifier_mut() = name.to_string();
+            *member.object_type_mut() = "CertTemplate".to_string();
+            ca.enabled_cert_templates_mut().push(member);
+        }
+        ca
+    }
+
+    /// The default templates whose names contain another one, plus Machine.
+    fn default_templates() -> Vec<CertTemplate> {
+        vec![
+            template("ADMINISTRATOR", "guid-administrator"),
+            template("CA", "guid-ca"),
+            template("EXCHANGEUSER", "guid-exchangeuser"),
+            template("EXCHANGEUSERSIGNATURE", "guid-exchangeusersignature"),
+            template("MACHINE", "guid-machine"),
+            template("SMARTCARDUSER", "guid-smartcarduser"),
+            template("USER", "guid-user"),
+            template("USERSIGNATURE", "guid-usersignature"),
+        ]
+    }
+
+    fn resolve(mut templates: Vec<CertTemplate>, names: &[&str]) -> Vec<String> {
+        let mut cas = vec![ca(names)];
+        templates_enabled_change_displayname_to_sid(&mut templates, &mut cas).unwrap();
+        cas[0]
+            .enabled_cert_templates()
+            .iter()
+            .map(|m| m.object_identifier().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn published_templates_match_by_exact_name() {
+        // A substring match picked ExchangeUser for User, ExchangeUserSignature
+        // for UserSignature, and Administrator for CA (every key contains "CA"
+        // through ".LOCAL").
+        assert_eq!(
+            resolve(default_templates(), &["User", "UserSignature", "CA", "Machine"]),
+            ["guid-user", "guid-usersignature", "guid-ca", "guid-machine"]
+        );
+    }
+
+    #[test]
+    fn published_template_match_ignores_case() {
+        assert_eq!(resolve(default_templates(), &["user", "MACHINE"]), ["guid-user", "guid-machine"]);
+    }
+
+    #[test]
+    fn names_without_a_template_are_dropped() {
+        // "Use" is contained in USER and EXCHANGEUSER but is not a template.
+        assert_eq!(resolve(default_templates(), &["Use", "User"]), ["guid-user"]);
+    }
+
+    #[test]
+    fn result_does_not_depend_on_template_order() {
+        let names = ["User", "UserSignature", "CA", "Machine", "Administrator"];
+        let forward = resolve(default_templates(), &names);
+        let mut reversed = default_templates();
+        reversed.reverse();
+        assert_eq!(resolve(reversed, &names), forward);
+
+        // Even with a duplicated name, the same template wins either way.
+        let mut dup = default_templates();
+        dup.push(template("USER", "guid-user-duplicate"));
+        let one_way = resolve(dup.clone(), &["User"]);
+        dup.reverse();
+        assert_eq!(resolve(dup, &["User"]), one_way);
+    }
 }
