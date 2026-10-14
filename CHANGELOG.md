@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.25 - 2026-10-14
+
+### Fixed
+- Enterprise CA published templates were resolved by substring, so on a default CA `User` resolved to `ExchangeUser`, `UserSignature` to `ExchangeUserSignature`, and `CA` to `Administrator` in a `.local` domain ([#85](https://github.com/g0h4n/RustHound-CE/issues/85)). `templates_enabled_change_displayname_to_sid` keyed its map by the full `NAME@DOMAIN` and kept every key that *contained* the published name, taking the smallest. Templates are now keyed by their bare name (the RDN, which is what `certificateTemplates` holds) and looked up exactly, ignoring case, so each name matches at most one template and the CA's `EnabledCertTemplates` (and the `PublishedTo` edges ADCS attack paths start from) are correct. The result stays deterministic ([#44](https://github.com/g0h4n/RustHound-CE/pull/44)). Thanks to [@marbas207](https://github.com/marbas207) ([#86](https://github.com/g0h4n/RustHound-CE/pull/86)).
+- Foreign security principals were identified by their `objectGUID` instead of their SID ([#87](https://github.com/g0h4n/RustHound-CE/issues/87)), a regression introduced in v2.5.14. `Fsp::parse` read `objectSid` only from the text attributes, where a domain SID (not valid UTF-8) never lands, while the binary-attribute loop set `object_identifier` to `objectGUID` and overwrote any well-known SID already read. Members from trusted forests and well-known SIDs (Authenticated Users `S-1-5-11`, Interactive `S-1-5-4`, ...) keyed a nameless GUID node that never merged with the real SID-keyed principal, breaking `MemberOf` edges. `objectSid` is now read from the binary attributes as `Group::parse` does, and `objectGUID` is kept as a property only. Thanks to [@marbas207](https://github.com/marbas207).
+
 ## 2.5.24 - 2026-10-10
 
 Fix false-positive ACEs on Certificate Templates. The `ObjectIdentifier` was left unset on `certtemplates` objects, causing all certificate-related ACEs to be merged onto a single node and producing false positives in BloodHound CE. The `ObjectIdentifier` is now set per Certificate Template, so ACEs are correctly mapped to their own template node.
