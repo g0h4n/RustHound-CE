@@ -116,10 +116,19 @@ impl Fsp {
         for (key, value) in &result_bin {
             match key.as_str() {
                 "objectGUID" => {
-                    // objectGUID raw to string
+                    // objectGUID raw to string; the FSP is identified by its SID
                     let guid = decode_guid_le(&value[0]);
-                    self.object_identifier = guid.to_owned();
                     self.properties.objectguid = guid;
+                }
+                "objectSid" => {
+                    // ldap3 puts objectSid here when it is not valid UTF-8,
+                    // which is the case for almost every domain SID
+                    let sid = sid_maker(LdapSid::parse(&value[0]).unwrap().1, domain);
+                    self.object_identifier = sid.to_owned();
+
+                    for domain_sid in OBJECT_SID_RE1.captures_iter(&sid) {
+                        self.properties.domainsid = domain_sid[0].to_owned().to_string();
+                    }
                 }
                 _ => {}
             }
@@ -285,5 +294,107 @@ impl LdapObject for Fsp {
     fn set_owner_rights_flags(&mut self, any: bool, any_inherited: bool) {
         self.properties.doesanyacegrantownerrights = any;
         self.properties.doesanyinheritedacegrantownerrights = any_inherited;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Fsp;
+    use crate::json::checker::common::replace_sid_members;
+    use crate::objects::{common::Member, group::Group};
+    use ldap3::SearchEntry;
+    use std::collections::HashMap;
+
+    const GUID: [u8; 16] = [
+        0x58, 0xEC, 0x7B, 0xF7, 0xA7, 0x73, 0x8D, 0x40,
+        0xAF, 0x0D, 0x42, 0xF0, 0xD7, 0x2C, 0x71, 0x14,
+    ];
+    const GUID_STR: &str = "F77BEC58-73A7-408D-AF0D-42F0D72C7114";
+
+    /// A SID in its binary form: revision 1, authority 5 (NT), sub-authorities.
+    fn sid_bytes(sub_authorities: &[u32]) -> Vec<u8> {
+        let mut b = vec![1, sub_authorities.len() as u8, 0, 0, 0, 0, 0, 5];
+        for s in sub_authorities {
+            b.extend_from_slice(&s.to_le_bytes());
+        }
+        b
+    }
+
+    fn parse(entry: SearchEntry) -> (Fsp, HashMap<String, String>) {
+        let mut fsp = Fsp::new();
+        let mut dn_sid = HashMap::new();
+        let mut sid_type = HashMap::new();
+        fsp.parse(entry, "example.local", &mut dn_sid, &mut sid_type, "S-1-5-21-1-2-3")
+            .unwrap();
+        (fsp, dn_sid)
+    }
+
+    /// A principal from a trusted forest: ldap3 delivers its objectSid, which
+    /// is not valid UTF-8, in bin_attrs.
+    fn foreign_principal() -> (String, SearchEntry) {
+        let sid = "S-1-5-21-1111111111-2222222222-3333333333-1108";
+        let bytes = sid_bytes(&[21, 1111111111, 2222222222, 3333333333, 1108]);
+        assert!(std::str::from_utf8(&bytes).is_err(), "delivered in bin_attrs");
+        let dn = format!("CN={sid},CN=ForeignSecurityPrincipals,DC=example,DC=local");
+        let entry = SearchEntry {
+            dn: dn.clone(),
+            attrs: HashMap::from([("name".to_string(), vec![sid.to_string()])]),
+            bin_attrs: HashMap::from([
+                ("objectSid".to_string(), vec![bytes]),
+                ("objectGUID".to_string(), vec![GUID.to_vec()]),
+            ]),
+        };
+        (dn.to_uppercase(), entry)
+    }
+
+    #[test]
+    fn domain_sid_from_bin_attrs_is_the_identifier() {
+        let (dn, entry) = foreign_principal();
+        let (fsp, dn_sid) = parse(entry);
+        let sid = "S-1-5-21-1111111111-2222222222-3333333333-1108";
+        assert_eq!(fsp.object_identifier, sid);
+        assert_eq!(fsp.properties.objectguid, GUID_STR);
+        assert_eq!(fsp.properties.domainsid, "S-1-5-21-1111111111-2222222222-3333333333");
+        assert_eq!(dn_sid.get(&dn).map(String::as_str), Some(sid));
+    }
+
+    #[test]
+    fn well_known_sid_from_attrs_is_not_overwritten_by_the_guid() {
+        // S-1-5-11 (Authenticated Users) is valid UTF-8, so ldap3 delivers it
+        // in attrs.
+        let raw = String::from_utf8(sid_bytes(&[11])).unwrap();
+        let entry = SearchEntry {
+            dn: "CN=S-1-5-11,CN=ForeignSecurityPrincipals,DC=example,DC=local".to_string(),
+            attrs: HashMap::from([
+                ("name".to_string(), vec!["S-1-5-11".to_string()]),
+                ("objectSid".to_string(), vec![raw]),
+            ]),
+            bin_attrs: HashMap::from([("objectGUID".to_string(), vec![GUID.to_vec()])]),
+        };
+        let (fsp, _) = parse(entry);
+        assert_eq!(fsp.object_identifier, "EXAMPLE.LOCAL-S-1-5-11");
+        assert_eq!(fsp.properties.objectguid, GUID_STR);
+    }
+
+    #[test]
+    fn group_member_from_a_trusted_forest_resolves_to_its_sid() {
+        let (dn, entry) = foreign_principal();
+        let mut fsp = Fsp::new();
+        let mut dn_sid = HashMap::new();
+        let mut sid_type = HashMap::new();
+        fsp.parse(entry, "example.local", &mut dn_sid, &mut sid_type, "S-1-5-21-1-2-3")
+            .unwrap();
+
+        let mut group = Group::new();
+        let mut member = Member::new();
+        *member.object_identifier_mut() = dn;
+        group.members_mut().push(member);
+        let mut groups = vec![group];
+        replace_sid_members(&mut groups, &dn_sid, &sid_type, &[]).unwrap();
+
+        assert_eq!(
+            groups[0].members()[0].object_identifier(),
+            "S-1-5-21-1111111111-2222222222-3333333333-1108"
+        );
     }
 }
