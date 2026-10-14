@@ -60,7 +60,7 @@ pub enum CollectionMethod {
 }
 
 impl CollectionMethod {
-    pub fn does_session(&self)      -> bool { matches!(self, Self::All | Self::Session) }
+    pub fn does_session(&self)      -> bool { self.srvsvc() || self.wkssvc() || self.registry() }
     pub fn srvsvc(&self)            -> bool { matches!(self, Self::All | Self::Session) }
     pub fn wkssvc(&self)            -> bool { matches!(self, Self::All | Self::Session) }
     pub fn registry(&self)          -> bool { matches!(self, Self::All | Self::Session | Self::RegistryOnly) }
@@ -433,5 +433,32 @@ pub fn auto_args() -> Options {
         cache: false,
         cache_buffer_size: 1000,
         resume: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CollectionMethod::*;
+
+    #[test]
+    fn session_module_runs_for_every_method_that_makes_a_session_call() {
+        // (method, srvsvc, wkssvc, registry, session module runs)
+        let table = [
+            (All,           true,  true,  true,  true),
+            (Session,       true,  true,  true,  true),
+            (RegistryOnly,  false, false, true,  true),
+            (DCOnly,        false, false, false, false),
+            (LdapOnly,      false, false, false, false),
+            (GPOLocalGroup, false, false, false, false),
+            (LocalGroup,    false, false, false, false),
+            (WebClient,     false, false, false, false),
+        ];
+        for (method, srvsvc, wkssvc, registry, session) in table {
+            assert_eq!(
+                (method.srvsvc(), method.wkssvc(), method.registry(), method.does_session()),
+                (srvsvc, wkssvc, registry, session),
+                "{method:?}"
+            );
+        }
     }
 }
