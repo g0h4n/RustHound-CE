@@ -75,8 +75,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Install LLVM for clang
-          winget install LLVM -e --silent --accept-source-agreements
+          # Install LLVM for clang (choco is preinstalled and reliable; winget is flaky on runners)
+          choco install llvm -y --no-progress
 
           # Install MIT Kerberos for Windows
           $url = "https://web.mit.edu/kerberos/dist/kfw/4.1/kfw-4.1-amd64.msi"
@@ -84,6 +84,7 @@ jobs:
           Start-Process msiexec.exe -ArgumentList "/i kfw.msi /qn /norestart" -Wait
 
           # Set environment paths for Clang and Kerberos
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
           echo "KERB_ROOT=C:\Program Files\MIT\Kerberos" >> $env:GITHUB_ENV
           echo "INCLUDE=C:\Program Files\MIT\Kerberos\include" >> $env:GITHUB_ENV
           echo "LIB=C:\Program Files\MIT\Kerberos\lib" >> $env:GITHUB_ENV
