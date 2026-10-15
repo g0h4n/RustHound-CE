@@ -177,4 +177,4 @@ help:
 	@echo "usage: make install_macos_deps"
 	@echo ""
 
-.PHONY: testcargo fmt --all -- --check
+.PHONY: test
