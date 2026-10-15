@@ -154,7 +154,7 @@ help:
 	@echo "usage: make uninstall"
 	@echo "usage: make debug"
 	@echo "usage: make release"
-	@echo "usage: make test       (run before every push: fmt + clippy + tests)"
+	@echo "usage: make test       (run before every push: clippy + tests)"
 	@echo ""
 	@echo "Static:"
 	@echo "usage: make windows"
