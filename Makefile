@@ -19,6 +19,13 @@ check_rustup:
 update_rustup:
 	rustup update
 
+test: check_cargo
+	@echo -e "[*] \033[1;34mLinting (cargo clippy)\033[0m"
+	cargo clippy --all-targets -- -A warnings
+	@echo -e "[*] \033[1;34mRunning tests (cargo test)\033[0m"
+	cargo test --all-targets --locked
+	@echo -e "[+] \033[1;32mAll checks passed, safe to push.\033[0m"
+
 release: check_cargo
 	cargo build --release
 	cp target/release/$(prog) .
@@ -147,6 +154,7 @@ help:
 	@echo "usage: make uninstall"
 	@echo "usage: make debug"
 	@echo "usage: make release"
+	@echo "usage: make test       (run before every push: fmt + clippy + tests)"
 	@echo ""
 	@echo "Static:"
 	@echo "usage: make windows"
@@ -168,3 +176,5 @@ help:
 	@echo "usage: make install_linux_musl_deps"
 	@echo "usage: make install_macos_deps"
 	@echo ""
+
+.PHONY: testcargo fmt --all -- --check
