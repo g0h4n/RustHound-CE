@@ -34,7 +34,7 @@ use crate::args::Options;
 use crate::modules::webclient::types::Outcome;
 use crate::objects::common::WebClientRunning;
 use crate::objects::computer::Computer;
-use crate::transport::smb::{connect_ipc, is_reachable, nt_hash_from_str, smb_user, SmbAuth};
+use crate::transport::smb::{connect_ipc, is_reachable, nt_hash_from_str, smb_identity, SmbAuth};
 
 const DEFAULT_CONCURRENCY: usize = 10;      // ~ SharpHound --Throttle
 const DEFAULT_PORT_TIMEOUT_MS: u64 = 1_500; // 445 pre-check budget
@@ -67,8 +67,8 @@ pub async fn run(
 
     // Auth material, computed once and cloned per host.
     let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
-    let domain = args.domain.clone();
-    let user = smb_user(args.username.as_deref().unwrap_or_default());
+    // SMB sign-in identity: the account's own domain from -u, else --domain.
+    let (signin_domain, user) = smb_identity(args.username.as_deref().unwrap_or_default(), &args.domain);
     let password = args.password.clone().unwrap_or_default();
     let nt_hash = nt_hash_from_str(args.hashes.as_deref().unwrap_or_default());
 
@@ -89,15 +89,15 @@ pub async fn run(
     // Probe with bounded concurrency.
     let results: Vec<(String, Outcome)> = stream::iter(targets)
         .map(|(host, oid)| {
-            let (sem, domain, user, password) =
-                (sem.clone(), domain.clone(), user.clone(), password.clone());
+            let (sem, signin_domain, user, password) =
+                (sem.clone(), signin_domain.clone(), user.clone(), password.clone());
             let nt_hash = nt_hash;
             let kerberos_ccache = kerberos_ccache.clone();
             let kdc = kdc.clone();
             async move {
                 let _permit = sem.acquire().await.unwrap();
                 let outcome = probe_host(
-                    &host, &domain, &user, &password,
+                    &host, &signin_domain, &user, &password,
                     nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc,
                 ).await;
                 (oid, outcome)

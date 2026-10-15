@@ -39,7 +39,7 @@ use dcerpc::rrp::{RegistryClient, RegistrySession};
 use dcerpc::srvsvc::SrvsvcClient;
 use dcerpc::wkssvc::{WkstaUser, WkstaUserClient};
 use smb2_client::SmbClient;
-use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_user, SmbAuth};
+use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_identity, SmbAuth};
 
 use crate::args::{CollectionMethod, Options};
 use crate::objects::common::{Session, UserComputerSession};
@@ -158,8 +158,8 @@ pub async fn run(
 
     // 3) Enumerate with bounded concurrency (throttle) instead of a serial loop.
     let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
-    let domain = args.domain.clone();
-    let user = smb_user(args.username.as_deref().unwrap_or_default());
+    // SMB sign-in identity: the account's own domain from -u, else --domain.
+    let (signin_domain, user) = smb_identity(args.username.as_deref().unwrap_or_default(), &args.domain);
     let password = args.password.clone().unwrap_or_default();
     let nt_hash = parse_hash(args.hashes.as_deref()); // "LM:NT" | ":NT" | "NT" -> [u8;16]
     let method = args.collection_method.clone();
@@ -181,8 +181,8 @@ pub async fn run(
     trace!("[sessions] starting concurrent enumeration (concurrency={DEFAULT_CONCURRENCY})");
     let findings: Vec<HostFindings> = stream::iter(targets)
         .map(|(host, computer_sid)| {
-            let (sem, domain, user, password, method) =
-                (sem.clone(), domain.clone(), user.clone(), password.clone(), method.clone());
+            let (sem, signin_domain, user, password, method) =
+                (sem.clone(), signin_domain.clone(), user.clone(), password.clone(), method.clone());
             let nt_hash = nt_hash;
             let kerberos_ccache = kerberos_ccache.clone();
             let kdc = kdc.clone();
@@ -191,7 +191,7 @@ pub async fn run(
                 let _permit = sem.acquire().await.unwrap();
                 trace!("[sessions] [{host}] permit acquired, entering enumerate_host");
                 let hf = enumerate_host(
-                    &host, computer_sid, &domain, &user, &password,
+                    &host, computer_sid, &signin_domain, &user, &password,
                     nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc, &method,
                 ).await;
                 trace!("[sessions] [{host}] enumerate_host returned ({} error(s))", hf.errors().len());
@@ -220,7 +220,7 @@ pub async fn run(
 #[allow(clippy::too_many_arguments)]
 async fn enumerate_host(
     host: &str, computer_sid: String,
-    domain: &str, user: &str, password: &str,
+    signin_domain: &str, user: &str, password: &str,
     nt_hash: Option<&[u8; 16]>,
     kerberos_ccache: Option<&str>,
     kdc: &str,
@@ -251,13 +251,13 @@ async fn enumerate_host(
                         .await
                         .map_err(|e| format!("{host} krb: {e}"))?;
                 let auth = SmbAuth::Kerberos { gss_blob: &gss_blob, session_key: &session_key };
-                connect_ipc(host, domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
+                connect_ipc(host, signin_domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
             } else {
                 let auth = match nt_hash {
                     Some(h) => SmbAuth::Hash(h),
                     None    => SmbAuth::Password(password),
                 };
-                connect_ipc(host, domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
+                connect_ipc(host, signin_domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
             };
 
             if method.srvsvc() {
@@ -273,7 +273,7 @@ async fn enumerate_host(
                 };
             }
             if method.registry() {
-                hf.registry = match enum_registry(&mut smb, domain, user, password, nt_hash, host).await {
+                hf.registry = match enum_registry(&mut smb, signin_domain, user, password, nt_hash, host).await {
                     Ok(sids) => Call::Done(sids),
                     Err(e)   => Call::Failed(format!("{host} WINREG: {e} (RemoteRegistry stopped?)")),
                 };

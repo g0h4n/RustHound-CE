@@ -66,9 +66,12 @@ fn is_gpo_guid(name: &str) -> bool {
 
 /// Build the SMB target and credentials, then collect GPO directives off SYSVOL.
 pub async fn collect_sysvol_targets(common_args: &Options, scope: &ComputerGpoScope) -> anyhow::Result<Vec<SysvolGpo>> {
-    use crate::transport::smb::{nt_hash_from_str, smb_user, SmbAuth};
+    use crate::transport::smb::{nt_hash_from_str, smb_identity, SmbAuth};
 
-    let user = smb_user(common_args.username.as_deref().unwrap_or_default());
+    // SMB sign-in identity: the account's own domain from -u, else --domain.
+    // The SYSVOL root stays the collected domain.
+    let (signin_domain, user) =
+        smb_identity(common_args.username.as_deref().unwrap_or_default(), &common_args.domain);
     let password = common_args.password.clone().unwrap_or_default();
     let nt = common_args.hashes.as_deref().and_then(nt_hash_from_str);
 
@@ -93,7 +96,7 @@ pub async fn collect_sysvol_targets(common_args: &Options, scope: &ComputerGpoSc
         let (gss_blob, session_key) =
             crate::transport::kerberos::kerberos_material_for(&ccache, &spn, &dc_host).await?;
         let auth = SmbAuth::Kerberos { gss_blob: &gss_blob, session_key: &session_key };
-        return collect(&dc_host, &common_args.domain, &common_args.domain, &user, auth, scope).await;
+        return collect(&dc_host, &common_args.domain, &signin_domain, &user, auth, scope).await;
     }
 
     // Password / pass the hash.
@@ -101,7 +104,7 @@ pub async fn collect_sysvol_targets(common_args: &Options, scope: &ComputerGpoSc
         Some(h) => SmbAuth::Hash(h),
         None => SmbAuth::Password(&password),
     };
-    collect(&dc_host, &common_args.domain, &common_args.domain, &user, auth, scope).await
+    collect(&dc_host, &common_args.domain, &signin_domain, &user, auth, scope).await
 }
 
 /// Connect to `dc_host` SYSVOL and collect GPO directives.

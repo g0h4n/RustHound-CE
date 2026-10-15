@@ -36,7 +36,7 @@ use crate::args::Options;
 use crate::objects::common::{LocalGroup, Member, UserRight};
 use crate::objects::computer::Computer;
 use crate::objects::user::User;
-use crate::transport::smb::{connect_ipc, open_rpc_pipe, smb_user, SmbAuth};
+use crate::transport::smb::{connect_ipc, open_rpc_pipe, smb_identity, SmbAuth};
 
 use self::samr::{is_domain_controller, is_under, sid_to_string, SamrAliasClient};
 use self::types::{group_display_name, group_object_id, Alias, AliasFinding, HostFindings, ALIASES};
@@ -67,8 +67,10 @@ pub async fn run(
     info!("[localgroups] {} active target(s) after expiry/enabled filter", targets.len());
 
     let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
+    // `domain` is the collected domain (DC check, group SIDs); the SMB sign-in
+    // uses the account's own domain from -u, else --domain.
     let domain = args.domain.clone();
-    let user = smb_user(args.username.as_deref().unwrap_or_default());
+    let (signin_domain, user) = smb_identity(args.username.as_deref().unwrap_or_default(), &args.domain);
     let password = args.password.clone().unwrap_or_default();
     let nt_hash = parse_hash(args.hashes.as_deref());
 
@@ -83,15 +85,15 @@ pub async fn run(
 
     let findings: Vec<HostFindings> = stream::iter(targets)
         .map(|(host, computer_sid)| {
-            let (sem, domain, user, password) =
-                (sem.clone(), domain.clone(), user.clone(), password.clone());
+            let (sem, domain, signin_domain, user, password) =
+                (sem.clone(), domain.clone(), signin_domain.clone(), user.clone(), password.clone());
             let nt_hash = nt_hash;
             let kerberos_ccache = kerberos_ccache.clone();
             let kdc = kdc.clone();
             async move {
                 let _permit = sem.acquire().await.unwrap();
                 enumerate_host(
-                    &host, computer_sid, &domain, &user, &password,
+                    &host, computer_sid, &domain, &signin_domain, &user, &password,
                     nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc,
                 )
                 .await
@@ -120,6 +122,7 @@ async fn enumerate_host(
     host: &str,
     computer_sid: String,
     domain: &str,
+    signin_domain: &str,
     user: &str,
     password: &str,
     nt_hash: Option<&[u8; 16]>,
@@ -150,13 +153,13 @@ async fn enumerate_host(
                         .await
                         .map_err(|e| format!("{host} krb: {e}"))?;
                 let auth = SmbAuth::Kerberos { gss_blob: &gss_blob, session_key: &session_key };
-                connect_ipc(host, domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
+                connect_ipc(host, signin_domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
             } else {
                 let auth = match nt_hash {
                     Some(h) => SmbAuth::Hash(h),
                     None => SmbAuth::Password(password),
                 };
-                connect_ipc(host, domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
+                connect_ipc(host, signin_domain, user, auth).await.map_err(|e| format!("{host}: {e}"))?
             };
 
             let (host_aliases, host_errors, dc) =
