@@ -42,7 +42,7 @@ use smb2_client::SmbClient;
 use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_user, SmbAuth};
 
 use crate::args::{CollectionMethod, Options};
-use crate::objects::common::UserComputerSession;
+use crate::objects::common::{Session, UserComputerSession};
 use crate::objects::computer::Computer;
 use crate::objects::user::User;
 
@@ -50,6 +50,8 @@ const DEFAULT_CONCURRENCY: usize = 10;      // ~ SharpHound --Throttle
 const DEFAULT_PORT_TIMEOUT_MS: u64 = 1_500; // 445 pre-check budget
 const DEFAULT_HOST_TIMEOUT_MS: u64 = 8_000; // whole per-host RPC budget
 const DEFAULT_EXPIRY_DAYS: i64 = 60;        // ~ SharpHound --ComputerExpiryDays
+const ERROR_ACCESS_DENIED: u32 = 5;
+const ERROR_MORE_DATA: u32 = 234;
 
 // ----
 // Raw per-host findings (kept close to HasSession-rs)
@@ -57,12 +59,70 @@ const DEFAULT_EXPIRY_DAYS: i64 = 60;        // ~ SharpHound --ComputerExpiryDays
 
 struct SmbSession { user: String, _client: String }
 
+/// Outcome of one RPC call on one host.
+enum Call<T> {
+    NotRun,         // not part of this collection method
+    Pending,        // attempted, no result yet
+    Done(Vec<T>),
+    Failed(String), // the error that is logged and written as FailureReason
+}
+
+impl<T> Call<T> {
+    fn items(&self) -> &[T] {
+        match self {
+            Call::Done(v) => v,
+            _ => &[],
+        }
+    }
+}
+
 struct HostFindings {
     computer_sid: String,
-    smb_sessions: Vec<SmbSession>,      // SRVSVC
-    logged_on:    Vec<WkstaUser>,       // WKSSVC
-    registry:     Vec<RegistrySession>, // WINREG
-    errors:       Vec<String>,
+    smb_sessions: Call<SmbSession>,      // SRVSVC
+    logged_on:    Call<WkstaUser>,       // WKSSVC
+    registry:     Call<RegistrySession>, // WINREG
+}
+
+impl HostFindings {
+    /// Every call the collection method makes starts as Pending.
+    fn new(computer_sid: String, method: &CollectionMethod) -> Self {
+        fn pending<T>(run: bool) -> Call<T> { if run { Call::Pending } else { Call::NotRun } }
+        HostFindings {
+            computer_sid,
+            smb_sessions: pending(method.srvsvc()),
+            logged_on:    pending(method.wkssvc()),
+            registry:     pending(method.registry()),
+        }
+    }
+
+    /// Mark the calls that have no result yet as failed (unreachable host,
+    /// connect/auth failure, per-host timeout). Finished calls are kept.
+    fn fail_pending(&mut self, reason: &str) {
+        fn fail<T>(c: &mut Call<T>, reason: &str) {
+            if matches!(c, Call::Pending) { *c = Call::Failed(reason.to_string()); }
+        }
+        fail(&mut self.smb_sessions, reason);
+        fail(&mut self.logged_on, reason);
+        fail(&mut self.registry, reason);
+    }
+
+    /// Distinct failure reasons, for the log (a connect failure is shared by all calls).
+    fn errors(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for r in [failure(&self.smb_sessions), failure(&self.logged_on), failure(&self.registry)]
+            .into_iter().flatten()
+        {
+            if !out.contains(&r) { out.push(r); }
+        }
+        out
+    }
+}
+
+fn failure<T>(c: &Call<T>) -> Option<&str> {
+    match c {
+        Call::Failed(r) => Some(r),
+        _ => None,
+    }
 }
 
 // Entry point called by run_modules
@@ -134,7 +194,7 @@ pub async fn run(
                     &host, computer_sid, &domain, &user, &password,
                     nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc, &method,
                 ).await;
-                trace!("[sessions] [{host}] enumerate_host returned ({} error(s))", hf.errors.len());
+                trace!("[sessions] [{host}] enumerate_host returned ({} error(s))", hf.errors().len());
                 hf
             }
         })
@@ -148,7 +208,7 @@ pub async fn run(
     let mut total_sessions = 0usize;
     for hf in &findings {
         total_sessions += apply_findings(computers, hf, &sid_index, &args.domain);
-        for e in &hf.errors { warn!("{e}"); }
+        for e in hf.errors() { warn!("{e}"); }
     }
     info!("[sessions] {total_sessions} session(s) enumerated in total across {} host(s)",
           findings.len());
@@ -167,26 +227,20 @@ async fn enumerate_host(
     method: &CollectionMethod,
 ) -> HostFindings {
     trace!("[sessions] [{host}] enumerate_host: begin, running 445 pre-check");
+    let mut hf = HostFindings::new(computer_sid, method);
+
     // SharpHound-style reachability pre-check: 445 open within budget
     if !is_reachable(host, DEFAULT_PORT_TIMEOUT_MS).await {
         trace!("[{host}] 445/tcp unreachable - skip");
-        return HostFindings {
-            computer_sid,
-            smb_sessions: Vec::new(), logged_on: Vec::new(), registry: Vec::new(),
-            errors: vec![format!("{host}: 445/tcp unreachable")],
-        };
+        hf.fail_pending(&format!("{host}: 445/tcp unreachable"));
+        return hf;
     }
 
-    // The RPC body accumulates into its OWN locals and returns them, so it never
-    // aliases the outer findings the timeout wrapper also needs (avoids E0499).
+    // The RPC body writes each call's outcome into `hf` as soon as it finishes,
+    // so a per-host timeout keeps the calls that already completed.
     let work = async {
-        let mut smb_sessions = Vec::new();
-        let mut logged_on    = Vec::new();
-        let mut registry     = Vec::new();
-        let mut errors       = Vec::new();
-
         // Inner block uses `?` for the fatal connect/auth/tree steps; the error
-        // is folded into `errors` instead of bubbling out of `work`.
+        // becomes the FailureReason of every call that hasn't run yet.
         let fatal: Result<(), String> = async {
             // connect + SESSION_SETUP: Kerberos ticket, or password / pass the hash.
             let mut smb = if let Some(ccache) = kerberos_ccache {
@@ -207,42 +261,46 @@ async fn enumerate_host(
             };
 
             if method.srvsvc() {
-                match srvsvc_sessions(&mut smb, host).await {
-                    Ok((_, 5)) => errors.push(format!("[{host}] SRVSVC rc=5 ACCESS_DENIED (hardened / non-admin)")),
-                    Ok((s, _)) => smb_sessions = s,
-                    Err(e)     => errors.push(format!("{host} SRVSVC: {e}")),
-                }
+                hf.smb_sessions = match srvsvc_sessions(&mut smb, host).await {
+                    Ok((s, rc)) => from_rc(s, rc, &format!("[{host}] SRVSVC"), "ACCESS_DENIED (hardened / non-admin)"),
+                    Err(e)      => Call::Failed(format!("{host} SRVSVC: {e}")),
+                };
             }
             if method.wkssvc() {
-                match enum_wksta(&mut smb, host).await {
-                    Ok((_, 5)) => errors.push(format!("[{host}] WKSSVC rc=5 (local admin required)")),
-                    Ok((u, _)) => logged_on = dedup_wksta(u),
-                    Err(e)     => errors.push(format!("{host} WKSSVC: {e}")),
-                }
+                hf.logged_on = match enum_wksta(&mut smb, host).await {
+                    Ok((u, rc)) => from_rc(dedup_wksta(u), rc, &format!("[{host}] WKSSVC"), "(local admin required)"),
+                    Err(e)      => Call::Failed(format!("{host} WKSSVC: {e}")),
+                };
             }
             if method.registry() {
-                match enum_registry(&mut smb, domain, user, password, nt_hash, host).await {
-                    Ok(sids) => registry = sids,
-                    Err(e)   => errors.push(format!("{host} WINREG: {e} (RemoteRegistry stopped?)")),
-                }
+                hf.registry = match enum_registry(&mut smb, domain, user, password, nt_hash, host).await {
+                    Ok(sids) => Call::Done(sids),
+                    Err(e)   => Call::Failed(format!("{host} WINREG: {e} (RemoteRegistry stopped?)")),
+                };
             }
             Ok(())
         }.await;
 
-        if let Err(e) = fatal { errors.push(e); }
-        (smb_sessions, logged_on, registry, errors)
+        if let Err(e) = fatal { hf.fail_pending(&e); }
     };
 
     // whole-host budget so a slow-but-open host can't stall a worker
-    match timeout(Duration::from_millis(DEFAULT_HOST_TIMEOUT_MS), work).await {
-        Ok((smb_sessions, logged_on, registry, errors)) => HostFindings {
-            computer_sid, smb_sessions, logged_on, registry, errors,
-        },
-        Err(_elapsed) => HostFindings {
-            computer_sid,
-            smb_sessions: Vec::new(), logged_on: Vec::new(), registry: Vec::new(),
-            errors: vec![format!("{host}: per-host timeout")],
-        },
+    if timeout(Duration::from_millis(DEFAULT_HOST_TIMEOUT_MS), work).await.is_err() {
+        hf.fail_pending(&format!("{host}: per-host timeout"));
+    }
+    hf
+}
+
+/// Map a NetrSessionEnum / NetrWkstaUserEnum return code onto the call outcome.
+/// 234 keeps the entries returned, as SharpHound does; dcerpc has no resume handle.
+fn from_rc<T>(items: Vec<T>, rc: u32, call: &str, denied_hint: &str) -> Call<T> {
+    if rc == ERROR_MORE_DATA {
+        debug!("{call} rc=234 ERROR_MORE_DATA, keeping the {} entries returned", items.len());
+    }
+    match rc {
+        0 | ERROR_MORE_DATA => Call::Done(items),
+        ERROR_ACCESS_DENIED => Call::Failed(format!("{call} rc=5 {denied_hint}")),
+        _ => Call::Failed(format!("{call} rc={rc}")),
     }
 }
 
@@ -336,8 +394,9 @@ fn dedup_wksta(users: Vec<WkstaUser>) -> Vec<WkstaUser> {
 /// WKSSVC   -> PrivilegedSessions  (resolve username -> UserSID)
 /// WINREG   -> RegistrySessions    (r.sid is already a SID, no resolution)
 ///
-/// Each block sets Collected = true; unresolved principals are logged at warn!
-/// rather than silently dropped, matching SharpHound's behaviour.
+/// Each list gets Collected / FailureReason from its own call (`set_status`);
+/// unresolved principals are logged at warn! rather than silently dropped,
+/// matching SharpHound's behaviour.
 fn apply_findings(
     computers: &mut [Computer],
     hf: &HostFindings,
@@ -361,7 +420,7 @@ fn apply_findings(
     // SRVSVC -> Sessions
     {
         let s = computer.sessions_mut();
-        for sess in &hf.smb_sessions {
+        for sess in hf.smb_sessions.items() {
             match resolve(&sess.user, sid_index, domain) {
                 Some(user_sid) => {
                     trace!("[SRVSVC] {} has session on {fqdn}", sess.user);
@@ -371,13 +430,13 @@ fn apply_findings(
                 None => warn!("[{comp_sid}] unresolved SRVSVC principal '{}'", sess.user),
             }
         }
-        *s.collected_mut() = true;
+        set_status(s, &hf.smb_sessions);
     }
 
     // WKSSVC -> PrivilegedSessions
     {
         let p = computer.privileged_sessions_mut();
-        for u in &hf.logged_on {
+        for u in hf.logged_on.items() {
             match resolve(&u.username, sid_index, domain) {
                 Some(user_sid) => {
                     trace!("[WKSSVC] {}\\{} has session on {fqdn}", u.logon_domain, u.username);
@@ -388,23 +447,30 @@ fn apply_findings(
                                u.logon_domain, u.username),
             }
         }
-        *p.collected_mut() = true;
+        set_status(p, &hf.logged_on);
     }
 
     // WINREG -> RegistrySessions (SIDs already; no resolution needed)
     {
         let r = computer.registry_sessions_mut();
-        for reg in &hf.registry {
+        for reg in hf.registry.items() {
             if reg.sid.is_empty() { continue; }
             trace!("[WINREG] {} has session on {fqdn}", reg.sid);
             r.results_mut().push(mk_link(reg.sid.clone(), comp_sid.clone()));
             count += 1;
         }
-        *r.collected_mut() = true;
+        set_status(r, &hf.registry);
     }
 
     debug!("[sessions] Total {count} session(s) on {fqdn}");
     count
+}
+
+/// Collected / FailureReason of one session list: Collected only when its call
+/// succeeded, FailureReason only when it failed (a call not made leaves both unset).
+fn set_status<T>(s: &mut Session, call: &Call<T>) {
+    *s.collected_mut() = matches!(call, Call::Done(_));
+    *s.failure_reason_mut() = failure(call).map(str::to_string);
 }
 
 /// Parse a hash string into the 16-byte NT hash for pass-the-hash.
@@ -422,4 +488,95 @@ fn parse_hash(h: Option<&str>) -> Option<[u8; 16]> {
         *byte = u8::from_str_radix(&nt[i * 2..i * 2 + 2], 16).ok()?;
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HOST: &str = "ws01.example.local";
+    const COMPUTER_SID: &str = "S-1-5-21-1111-2222-3333-1105";
+
+    fn smb(user: &str) -> SmbSession {
+        SmbSession { user: user.to_string(), _client: String::new() }
+    }
+
+    fn status(s: &Session) -> (bool, Option<&str>) {
+        (*s.collected(), s.failure_reason().as_deref())
+    }
+
+    #[test]
+    fn session_defaults_to_not_collected() {
+        assert_eq!(status(&Session::default()), (false, None));
+        assert_eq!(status(&Session::new()), (false, None));
+        let s: Session = serde_json::from_str(r#"{"Results":[],"FailureReason":null}"#).unwrap();
+        assert_eq!(status(&s), (false, None));
+    }
+
+    #[test]
+    fn return_codes() {
+        assert!(matches!(from_rc(vec![smb("alice")], 0, "SRVSVC", ""), Call::Done(v) if v.len() == 1));
+        // ERROR_MORE_DATA keeps the entries returned, like SharpHound
+        assert!(matches!(from_rc(vec![smb("alice")], 234, "SRVSVC", ""), Call::Done(v) if v.len() == 1));
+        assert!(matches!(from_rc(vec![smb("alice")], 5, "[h] WKSSVC", "(local admin required)"),
+            Call::Failed(r) if r == "[h] WKSSVC rc=5 (local admin required)"));
+        // any other non-zero code is a failure, entries or not
+        assert!(matches!(from_rc(vec![smb("alice")], 53, "[h] SRVSVC", ""),
+            Call::Failed(r) if r == "[h] SRVSVC rc=53"));
+        assert!(matches!(from_rc(Vec::<SmbSession>::new(), 1722, "[h] SRVSVC", ""),
+            Call::Failed(r) if r == "[h] SRVSVC rc=1722"));
+    }
+
+    #[test]
+    fn only_the_calls_of_the_method_are_attempted() {
+        let hf = HostFindings::new(COMPUTER_SID.to_string(), &CollectionMethod::All);
+        assert!(matches!(hf.smb_sessions, Call::Pending));
+        assert!(matches!(hf.logged_on, Call::Pending));
+        assert!(matches!(hf.registry, Call::Pending));
+
+        let hf = HostFindings::new(COMPUTER_SID.to_string(), &CollectionMethod::RegistryOnly);
+        assert!(matches!(hf.smb_sessions, Call::NotRun));
+        assert!(matches!(hf.logged_on, Call::NotRun));
+        assert!(matches!(hf.registry, Call::Pending));
+    }
+
+
+    #[test]
+    fn timeout_keeps_finished_calls() {
+        let mut hf = HostFindings::new(COMPUTER_SID.to_string(), &CollectionMethod::All);
+        hf.smb_sessions = Call::Done(vec![smb("alice")]);
+        let reason = format!("{HOST}: per-host timeout");
+        hf.fail_pending(&reason);
+
+        let (mut s, mut p, mut r) = (Session::default(), Session::default(), Session::default());
+        set_status(&mut s, &hf.smb_sessions);
+        set_status(&mut p, &hf.logged_on);
+        set_status(&mut r, &hf.registry);
+        assert_eq!(status(&s), (true, None));
+        assert_eq!(status(&p), (false, Some(reason.as_str())));
+        assert_eq!(status(&r), (false, Some(reason.as_str())));
+        assert_eq!(hf.smb_sessions.items().len(), 1);
+        assert_eq!(hf.errors(), vec![reason.as_str()]);
+    }
+
+    #[test]
+    fn unreachable_fails_only_the_attempted_calls() {
+        let mut hf = HostFindings::new(COMPUTER_SID.to_string(), &CollectionMethod::RegistryOnly);
+        let reason = format!("{HOST}: 445/tcp unreachable");
+        hf.fail_pending(&reason);
+
+        let (mut s, mut r) = (Session::default(), Session::default());
+        set_status(&mut s, &hf.smb_sessions);
+        set_status(&mut r, &hf.registry);
+        assert_eq!(status(&s), (false, None));
+        assert_eq!(status(&r), (false, Some(reason.as_str())));
+    }
+
+    #[test]
+    fn errors_are_listed_once() {
+        let mut hf = HostFindings::new(COMPUTER_SID.to_string(), &CollectionMethod::All);
+        hf.logged_on = Call::Failed("[h] WKSSVC rc=5 (local admin required)".to_string());
+        hf.fail_pending("h: connect failed");
+        assert_eq!(hf.errors(), vec!["h: connect failed", "[h] WKSSVC rc=5 (local admin required)"]);
+    }
 }

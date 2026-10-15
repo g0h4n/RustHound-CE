@@ -107,7 +107,7 @@ impl LocalGroup {
 pub struct Session {
    #[serde(rename = "Results")]
    results: Vec<UserComputerSession>,
-   #[serde(rename = "Collected", default = "default_true")]
+   #[serde(rename = "Collected", default)]
    collected: bool,
    #[serde(rename = "FailureReason")]
    failure_reason: Option<String>,
@@ -115,10 +115,13 @@ pub struct Session {
 
 impl Default for Session {
    /// Default values for Session structure.
+   /// `Collected` is `false` until the session module reads the list, so a
+   /// host that wasn't contacted (DCOnly, filtered out) is not reported as
+   /// read with no sessions.
    fn default() -> Session {
       Session {
          results: Vec::new(),
-         collected: true,
+         collected: false,
          failure_reason: None,
        }
    }
@@ -127,10 +130,7 @@ impl Default for Session {
 impl Session {
    // New session.
    pub fn new() -> Self { 
-      Self { 
-         collected: true,
-         ..Default::default()
-      }
+      Self::default()
    }
 
    // Immutable access.
