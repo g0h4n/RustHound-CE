@@ -209,22 +209,34 @@ pub fn nt_hash_from_str(raw: &str) -> Option<[u8; 16]> {
     Some(out)
 }
 
-/// Normalize a raw `-u/--ldapusername` value into the bare NTLM username
+/// Split a raw `-u/--ldapusername` value into the `(domain, user)` pair
 /// expected by SMB SESSION_SETUP.
 ///
-/// `-u` is documented/used as `user@domain.local`, which is correct for LDAP
-/// but not for SMB: `smb.login()`/`login_hash()` build the NTLM identity
-/// themselves as `domain + "\" + user`, so passing a UPN-suffixed or
-/// `DOMAIN\`-prefixed value through unmodified produces an invalid identity
-/// (e.g. `SCAFFOLD.HTB\j.harris@scaffold.htb`) and the DC replies
-/// STATUS_LOGON_FAILURE. Strip both forms so callers always pass a bare
-/// sAMAccountName-style username. LDAP's own bind logic (transport::ldap)
-/// already handles its format correctly and must not use this helper.
-pub fn smb_user(raw: &str) -> String {
+/// `smb.login()`/`login_hash()` build the NTLM identity themselves as
+/// `domain + "\" + user`, so the user must be the bare name (passing
+/// `j.harris@scaffold.htb` through gave `SCAFFOLD.HTB\j.harris@scaffold.htb`
+/// and STATUS_LOGON_FAILURE). The domain is the one the username names
+/// (`DOMAIN\user` -> `DOMAIN`, `user@domain` -> `domain`), else
+/// `default_domain` (`--domain`), so an account from another domain signs in
+/// to its own. LDAP's bind (transport::ldap) handles its own format and must
+/// not use this helper.
+pub fn smb_identity(raw: &str, default_domain: &str) -> (String, String) {
     let raw = raw.trim();
-    let no_upn = raw.split('@').next().unwrap_or(raw);
-    let bare = no_upn.rsplit('\\').next().unwrap_or(no_upn);
-    bare.to_string()
+    // A UPN splits at its last '@', as Windows does.
+    let (no_upn, upn_domain) = match raw.rsplit_once('@') {
+        Some((user, domain)) => (user, Some(domain)),
+        None => (raw, None),
+    };
+    let (bare, netbios_domain) = match no_upn.rsplit_once('\\') {
+        Some((domain, user)) => (user, Some(domain)),
+        None => (no_upn, None),
+    };
+    let domain = netbios_domain
+        .or(upn_domain)
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+        .unwrap_or(default_domain);
+    (domain.to_string(), bare.trim().to_string())
 }
 
 /// SharpHound-style reachability pre-check: is `host:445` accepting TCP within
@@ -243,4 +255,62 @@ pub async fn is_reachable(host: &str, port_timeout_ms: u64) -> bool {
     let reachable = matches!(outcome, Ok(Ok(_)));
     trace!("[{host}] is_reachable: <<< returned, reachable={reachable}");
     reachable
+}
+
+#[cfg(test)]
+mod tests {
+    use super::smb_identity;
+
+    fn id(raw: &str) -> (String, String) {
+        smb_identity(raw, "EXAMPLE.LOCAL")
+    }
+
+    #[test]
+    fn upn_signs_in_to_its_own_domain() {
+        assert_eq!(id("alice@child.example.local"), ("child.example.local".into(), "alice".into()));
+    }
+
+    #[test]
+    fn down_level_name_signs_in_to_its_own_domain() {
+        assert_eq!(id("CHILD\\alice"), ("CHILD".into(), "alice".into()));
+    }
+
+    #[test]
+    fn bare_name_falls_back_to_default_domain() {
+        assert_eq!(id("alice"), ("EXAMPLE.LOCAL".into(), "alice".into()));
+        assert_eq!(id("  alice  "), ("EXAMPLE.LOCAL".into(), "alice".into()));
+    }
+
+    #[test]
+    fn empty_domain_part_falls_back_to_default_domain() {
+        assert_eq!(id("alice@"), ("EXAMPLE.LOCAL".into(), "alice".into()));
+        assert_eq!(id("\\alice"), ("EXAMPLE.LOCAL".into(), "alice".into()));
+    }
+
+    #[test]
+    fn down_level_domain_wins_over_upn_suffix() {
+        assert_eq!(id("CHILD\\alice@example.local"), ("CHILD".into(), "alice".into()));
+    }
+
+    #[test]
+    fn upn_splits_at_the_last_at_sign() {
+        assert_eq!(id("a@b@child.example.local"), ("child.example.local".into(), "a@b".into()));
+    }
+
+    #[test]
+    fn spaces_around_the_parts_are_dropped() {
+        assert_eq!(id("CHILD\\ alice"), ("CHILD".into(), "alice".into()));
+        assert_eq!(id("alice @ child.example.local"), ("child.example.local".into(), "alice".into()));
+    }
+
+    #[test]
+    fn missing_user_part_gives_an_empty_user() {
+        assert_eq!(id("CHILD\\"), ("CHILD".into(), String::new()));
+        assert_eq!(id("@child.example.local"), ("child.example.local".into(), String::new()));
+    }
+
+    #[test]
+    fn empty_username_keeps_default_domain() {
+        assert_eq!(id(""), ("EXAMPLE.LOCAL".into(), String::new()));
+    }
 }
