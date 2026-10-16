@@ -130,6 +130,11 @@ impl CertTemplate {
                         self.properties.issuancepolicies = value.to_owned();
                     }
                 }
+                "msPKI-Certificate-Policy" => {
+                    if !value.is_empty() {
+                        self.properties.certificatepolicy = value.to_owned();
+                    }
+                }
                 "msPKI-Cert-Template-OID" => {
                     if !value.is_empty() {
                         self.properties.oid = value[0].to_owned();
@@ -353,6 +358,7 @@ pub struct CertTemplateProperties {
     authorizedsignatures: i64,
     applicationpolicies: Vec<String>,
     issuancepolicies: Vec<String>,
+    certificatepolicy: Vec<String>,
     effectiveekus: Vec<String>,
     authenticationenabled: bool,
 }
@@ -391,6 +397,7 @@ impl Default for CertTemplateProperties {
             authorizedsignatures: 0,
             applicationpolicies: Vec::new(),
             issuancepolicies: Vec::new(),
+            certificatepolicy: Vec::new(),
             effectiveekus: Vec::new(),
             authenticationenabled: false,
        }
@@ -419,13 +426,17 @@ mod tests {
 
     fn parse_certtemplate_with_name_flag(flag: Option<i64>) -> CertTemplate {
         let mut attrs = HashMap::new();
-        attrs.insert("name".to_string(), vec!["RustHoundLab".to_string()]);
         if let Some(flag) = flag {
             attrs.insert(
                 "msPKI-Certificate-Name-Flag".to_string(),
                 vec![flag.to_string()],
             );
         }
+        parse_certtemplate(attrs)
+    }
+
+    fn parse_certtemplate(mut attrs: HashMap<String, Vec<String>>) -> CertTemplate {
+        attrs.insert("name".to_string(), vec!["RustHoundLab".to_string()]);
 
         let result = SearchEntry {
             dn: "CN=RustHoundLab,CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,DC=example,DC=local".to_string(),
@@ -483,5 +494,33 @@ mod tests {
         for property in SUBJECT_NAME_FLAG_PROPERTIES {
             assert_eq!(properties[property], false, "{property} should default to false");
         }
+    }
+
+    #[test]
+    fn parse_reads_certificate_policies() {
+        let mut attrs = HashMap::new();
+        attrs.insert(
+            "msPKI-Certificate-Policy".to_string(),
+            vec![
+                "1.3.6.1.4.1.311.21.8.1.1".to_string(),
+                "1.3.6.1.4.1.311.21.8.1.2".to_string(),
+            ],
+        );
+        let certtemplate = parse_certtemplate(attrs);
+
+        assert_eq!(
+            certtemplate.to_json()["Properties"]["certificatepolicy"],
+            serde_json::json!(["1.3.6.1.4.1.311.21.8.1.1", "1.3.6.1.4.1.311.21.8.1.2"])
+        );
+    }
+
+    #[test]
+    fn certificate_policies_default_to_an_empty_array() {
+        let certtemplate = parse_certtemplate(HashMap::new());
+
+        assert_eq!(
+            certtemplate.to_json()["Properties"]["certificatepolicy"],
+            serde_json::json!([])
+        );
     }
 }

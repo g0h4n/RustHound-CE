@@ -26,6 +26,9 @@ pub struct IssuancePolicie {
     is_acl_protected: bool,
     #[serde(rename = "ContainedBy")]
     contained_by: Option<Member>,
+    /// `msDS-OIDToGroupLink` (upper case), resolved by the checker.
+    #[serde(skip)]
+    group_link_dn: Option<String>,
 }
 
 impl IssuancePolicie {
@@ -89,6 +92,9 @@ impl IssuancePolicie {
                 "msPKI-Cert-Template-OID" => {
                     self.properties.certtemplateoid = value[0].to_owned();
                 }
+                "msDS-OIDToGroupLink" => {
+                    self.group_link_dn = value.first().map(|dn| dn.to_uppercase());
+                }
                 _ => {}
             }
         }
@@ -135,6 +141,22 @@ impl IssuancePolicie {
         // Trace and return IssuancePolicie struct
         // trace!("JSON OUTPUT: {:?}",serde_json::to_string(&self).unwrap());
         Ok(())
+    }
+
+    /// Resolve the group linked by `msDS-OIDToGroupLink` (ESC13) once all
+    /// objects are parsed. A group missing from the collected data, such as
+    /// one from another domain, leaves `GroupLink` and `oidgrouplink` unset.
+    pub fn resolve_group_link(
+        &mut self,
+        dn_sid: &HashMap<String, String>,
+        sid_type: &HashMap<String, String>,
+    ) {
+        let Some(sid) = self.group_link_dn.as_ref().and_then(|dn| dn_sid.get(dn)) else {
+            return;
+        };
+        let object_type = sid_type.get(sid).cloned().unwrap_or_else(|| "Base".to_string());
+        self.properties.oidgrouplink = Some(sid.to_owned());
+        self.group_link = GroupLink::new(Some(sid.to_owned()), object_type);
     }
 }
 
@@ -229,6 +251,8 @@ pub struct IssuancePolicieProperties {
     whencreated: i64,
     displayname: String,
     certtemplateoid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oidgrouplink: Option<String>,
 }
 
 impl Default for IssuancePolicieProperties {
@@ -246,6 +270,7 @@ impl Default for IssuancePolicieProperties {
             whencreated: -1,
             displayname: String::from(""),
             certtemplateoid: String::from(""),
+            oidgrouplink: None,
         }
     }
 }
@@ -285,6 +310,80 @@ impl Default for GroupLink {
         Self {
             object_identifier: None,
             object_type: "Base".to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GROUP_DN: &str = "CN=PKI Admins,CN=Users,DC=example,DC=local";
+    const GROUP_SID: &str = "S-1-5-21-1-2-3-1104";
+
+    fn parse_issuancepolicie(group_link: Option<&str>) -> IssuancePolicie {
+        let mut attrs = HashMap::new();
+        attrs.insert("displayName".to_string(), vec!["LabPolicy".to_string()]);
+        attrs.insert(
+            "msPKI-Cert-Template-OID".to_string(),
+            vec!["1.3.6.1.4.1.311.21.8.1.2".to_string()],
+        );
+        if let Some(dn) = group_link {
+            attrs.insert("msDS-OIDToGroupLink".to_string(), vec![dn.to_string()]);
+        }
+        let result = SearchEntry {
+            dn: "CN=1.2ABCDEF,CN=OID,CN=Public Key Services,CN=Services,CN=Configuration,DC=example,DC=local".to_string(),
+            attrs,
+            bin_attrs: HashMap::new(),
+        };
+        let mut issuancepolicie = IssuancePolicie::new();
+        issuancepolicie
+            .parse(
+                result,
+                "example.local",
+                &mut HashMap::new(),
+                &mut HashMap::new(),
+                "S-1-5-21-1-2-3",
+                &HashMap::new(),
+            )
+            .unwrap();
+        issuancepolicie
+    }
+
+    fn collected_group() -> (HashMap<String, String>, HashMap<String, String>) {
+        let dn_sid = HashMap::from([(GROUP_DN.to_uppercase(), GROUP_SID.to_string())]);
+        let sid_type = HashMap::from([(GROUP_SID.to_string(), "Group".to_string())]);
+        (dn_sid, sid_type)
+    }
+
+    #[test]
+    fn resolve_group_link_sets_the_linked_group_sid() {
+        let mut issuancepolicie = parse_issuancepolicie(Some(GROUP_DN));
+        let (dn_sid, sid_type) = collected_group();
+        issuancepolicie.resolve_group_link(&dn_sid, &sid_type);
+        let json = issuancepolicie.to_json();
+
+        assert_eq!(json["Properties"]["oidgrouplink"], GROUP_SID);
+        assert_eq!(
+            json["GroupLink"],
+            serde_json::json!({"ObjectIdentifier": GROUP_SID, "ObjectType": "Group"})
+        );
+    }
+
+    #[test]
+    fn unresolved_group_link_keeps_the_defaults() {
+        let (dn_sid, sid_type) = collected_group();
+        for group_link in [None, Some("CN=Other,CN=Users,DC=other,DC=local")] {
+            let mut issuancepolicie = parse_issuancepolicie(group_link);
+            issuancepolicie.resolve_group_link(&dn_sid, &sid_type);
+            let json = issuancepolicie.to_json();
+
+            assert!(json["Properties"].get("oidgrouplink").is_none(), "{group_link:?}");
+            assert_eq!(
+                json["GroupLink"],
+                serde_json::json!({"ObjectIdentifier": null, "ObjectType": "Base"}),
+                "{group_link:?}"
+            );
         }
     }
 }

@@ -38,17 +38,17 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 | [RootCA](#rootca) | 28 | 27 | 1 | `██████████` 96.4% |
 | [Gpo](#gpo) | 25 | 24 | 1 | `██████████` 96.0% |
 | [NtAuthStore](#ntauthstore) | 24 | 23 | 1 | `██████████` 95.8% |
+| [CertTemplate](#certtemplate) | 47 | 45 | 2 | `██████████` 95.7% |
 | [User](#user) | 70 | 67 | 3 | `██████████` 95.7% |
 | [OU](#ou) | 34 | 32 | 2 | `█████████░` 94.1% |
 | [Group](#group) | 32 | 30 | 2 | `█████████░` 93.8% |
-| [CertTemplate](#certtemplate) | 47 | 44 | 3 | `█████████░` 93.6% |
 | [AIACA](#aiaca) | 30 | 28 | 2 | `█████████░` 93.3% |
 | [Container](#container) | 26 | 24 | 2 | `█████████░` 92.3% |
 | [Domain](#domain) | 55 | 50 | 5 | `█████████░` 90.9% |
-| [IssuancePolicies](#issuancepolicies) | 27 | 21 | 6 | `████████░░` 77.8% |
+| [IssuancePolicies](#issuancepolicies) | 27 | 24 | 3 | `█████████░` 88.9% |
 | [EnterpriseCA](#enterpriseca) | 70 | 52 | 18 | `███████░░░` 74.3% |
 | [Computer](#computer) | 119 | 82 | 37 | `███████░░░` 68.9% |
-| **Total** | **587** | **504** | **83** | **`█████████░` 85.9%** |
+| **Total** | **587** | **508** | **79** | **`█████████░` 86.5%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
 > `LocalGroups` is now collected over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69));
@@ -501,9 +501,9 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 - [x] `Properties`:`whencreated` :white_check_mark:
 - [x] `Properties`:`displayname` :white_check_mark:
 - [x] `Properties`:`certtemplateoid` :white_check_mark:
-- [ ] `Properties`:`oidgrouplink` :red_circle: :new:
-- [ ] `GroupLink`:`ObjectIdentifier` :red_circle: (structure is emitted, but the value is always `null`)
-- [ ] `GroupLink`:`ObjectType` :red_circle: (always `Base`, never resolved to `Group`)
+- [x] `Properties`:`oidgrouplink` :white_check_mark: (when the linked group is in the collected domain)
+- [x] `GroupLink`:`ObjectIdentifier` :white_check_mark: (when the linked group is in the collected domain, else `null`)
+- [x] `GroupLink`:`ObjectType` :white_check_mark: (when the linked group is in the collected domain, else `Base`)
 - [x] `Aces`:`PrincipalSID` :white_check_mark:
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
@@ -712,7 +712,7 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 - [x] `Properties`:`subjectaltrequirespn` :white_check_mark:
 - [x] `Properties`:`subjectrequireemail` :white_check_mark:
 - [ ] `Properties`:`schannelauthenticationenabled` :red_circle:
-- [ ] `Properties`:`certificatepolicy` :red_circle: :new:
+- [x] `Properties`:`certificatepolicy` :white_check_mark:
 - [x] `Aces`:`PrincipalSID` :white_check_mark:
 - [x] `Aces`:`PrincipalType` :white_check_mark:
 - [x] `Aces`:`RightName` :white_check_mark:
