@@ -105,6 +105,10 @@ pub fn check_all_result(
 
     debug!("ContainedBy value added!");
 
+    debug!("Adding GroupLink for issuance policies started");
+    common::add_group_link_for_issuancepolicies(vec_issuancepolicies, dn_sid, sid_type)?;
+    debug!("GroupLink for issuance policies added!");
+
     debug!("Adding affected computers in GpoChanges");
     common::add_affected_computers(vec_domains, sid_type)?;
     common::add_affected_computers_for_ou(vec_ous, dn_sid, sid_type)?;

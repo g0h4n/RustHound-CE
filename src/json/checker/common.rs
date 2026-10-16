@@ -13,6 +13,7 @@ use crate::objects::{
     ou::Ou,
     domain::Domain,
     trust::Trust,
+    inssuancepolicie::IssuancePolicie,
     common::{Member, GPOChange, LdapObject}
 };
 //use log::{info,debug,trace};
@@ -875,6 +876,19 @@ pub fn add_contained_by_for<T: LdapObject + Send>(
         }
     });
 
+    Ok(())
+}
+
+/// Function to resolve the group linked to each issuance policy
+/// (`msDS-OIDToGroupLink`, ESC13) from the collected objects.
+pub fn add_group_link_for_issuancepolicies(
+    vec_issuancepolicies: &mut [IssuancePolicie],
+    dn_sid: &HashMap<String, String>,
+    sid_type: &HashMap<String, String>,
+) -> Result<(), Box<dyn Error>> {
+    vec_issuancepolicies.par_iter_mut().for_each(|issuancepolicie| {
+        issuancepolicie.resolve_group_link(dn_sid, sid_type);
+    });
     Ok(())
 }
 
