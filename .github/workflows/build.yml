@@ -8,7 +8,7 @@ on:
 
 permissions:
   contents: write
-  
+
 jobs:
   release:
     name: Release - ${{ matrix.platform.os-name }}
@@ -50,7 +50,7 @@ jobs:
       - name: Install cargo-cross
         if: runner.os == 'Linux'
         run: cargo install cross --version 0.2.5
-        
+
       - name: Install Dependencies for Native Linux
         if: matrix.platform.target == 'x86_64-unknown-linux-gnu'
         run: |
@@ -71,20 +71,52 @@ jobs:
           rustup toolchain install stable-x86_64-pc-windows-gnu
           choco install mingw
 
-      - name: Install Dependencies (Windows)
+      - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Install LLVM for clang (choco is preinstalled and reliable; winget is flaky on runners)
+          # LLVM provides clang/libclang for bindgen (choco is preinstalled and reliable)
           choco install llvm -y --no-progress
-
-          # Install MIT Kerberos for Windows
-          $url = "https://web.mit.edu/kerberos/dist/kfw/4.1/kfw-4.1-amd64.msi"
-          Invoke-WebRequest $url -OutFile "kfw.msi"
-          Start-Process msiexec.exe -ArgumentList "/i kfw.msi /qn /norestart" -Wait
-
-          # Set environment paths for Clang and Kerberos
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+      - name: Cache MIT Kerberos (Windows MSVC)
+        if: matrix.platform.target == 'x86_64-pc-windows-msvc'
+        id: kfw-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files\MIT\Kerberos
+          key: kfw-4.1-amd64
+
+      - name: Install MIT Kerberos (Windows MSVC)
+        # Only the MSVC build links GSSAPI; the GNU build uses --features nogssapi.
+        if: matrix.platform.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          if ('${{ steps.kfw-cache.outputs.cache-hit }}' -ne 'true') {
+            # MIT serves this MSI through Akamai, which occasionally returns a
+            # transient edge error (errors.edgesuite.net). Retry + validate the
+            # payload so a single bad edge hit doesn't fail the release.
+            $url = "https://web.mit.edu/kerberos/dist/kfw/4.1/kfw-4.1-amd64.msi"
+            $out = "kfw.msi"
+            $ProgressPreference = 'SilentlyContinue'   # also speeds up Invoke-WebRequest
+            $ok = $false
+            for ($i = 1; $i -le 5; $i++) {
+              try {
+                Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing `
+                  -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" `
+                  -MaximumRetryCount 3 -RetryIntervalSec 5
+                if ((Test-Path $out) -and (Get-Item $out).Length -gt 1MB) { $ok = $true; break }
+                Write-Host "Attempt $i: file too small, retrying"
+              } catch {
+                Write-Host "Attempt $i failed: $($_.Exception.Message)"
+              }
+              Start-Sleep -Seconds (10 * $i)
+            }
+            if (-not $ok) { throw "Failed to download KfW after retries" }
+            Start-Process msiexec.exe -ArgumentList "/i $out /qn /norestart" -Wait
+          }
+
+          # Export Kerberos paths on every run (cache restores files, not env).
           echo "KERB_ROOT=C:\Program Files\MIT\Kerberos" >> $env:GITHUB_ENV
           echo "INCLUDE=C:\Program Files\MIT\Kerberos\include" >> $env:GITHUB_ENV
           echo "LIB=C:\Program Files\MIT\Kerberos\lib" >> $env:GITHUB_ENV
@@ -134,7 +166,7 @@ jobs:
           if [[ "${{ matrix.platform.target }}" == "x86_64-unknown-linux-gnu" || "${{ runner.os }}" == "macOS" || "${{ matrix.platform.target }}" == "x86_64-pc-windows-msvc" ]]; then
             RUSTFLAGS_VAL="-C target-feature=+crt-static"
           fi
-          
+
           NOGSSAPI_FLAGS=""
           if [[ "${{ runner.os }}" == "macOS" || "${{ matrix.platform.target }}" == "x86_64-unknown-linux-gnu" ]]; then
             NOGSSAPI_FLAGS="--features nogssapi --no-default-features"
