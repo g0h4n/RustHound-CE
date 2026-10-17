@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.26 - 2026-10-17
+
+### Added
+- ESC13 support: certificate template policies and issuance policy group links ([#95](https://github.com/g0h4n/RustHound-CE/issues/95)). CertTemplate now emits `certificatepolicy` (`msPKI-Certificate-Policy`, an array, empty when absent), and IssuancePolicy resolves `msDS-OIDToGroupLink` into `oidgrouplink` and `GroupLink` (`ObjectIdentifier` = the group SID, `ObjectType` = `Group`), resolved from the collected data in the checker. Together these let BloodHound-CE form the `ExtendedByPolicy` and `OIDGroupLink` edges that the ESC13 path walks. Both attributes already come back in the existing Configuration NC read, so no extra search or rights are needed; an unresolved link stays at the default and `oidgrouplink` is omitted, matching SharpHound. Thanks to [@marbas207](https://github.com/marbas207) ([#96](https://github.com/g0h4n/RustHound-CE/pull/96)).
+
+### Fixed
+- `-c RegistryOnly` ran no session module, so no registry sessions were collected since v2.5.20 ([#89](https://github.com/g0h4n/RustHound-CE/issues/89)). `does_session()` matched only `All | Session` while `registry()` included `RegistryOnly`, so the module guard skipped it; it's now derived from `srvsvc() || wkssvc() || registry()` so the checks can't drift apart. Thanks to [@marbas207](https://github.com/marbas207) ([#90](https://github.com/g0h4n/RustHound-CE/pull/90)).
+- Computer session lists (`Sessions`, `PrivilegedSessions`, `RegistrySessions`) were written `Collected: true` even when the calls failed or the host was never contacted ([#91](https://github.com/g0h4n/RustHound-CE/issues/91)). Following the `WebClientRunning` pattern, `Session` now defaults to `Collected: false`, each list is `Collected: true` only when its own call succeeded, otherwise `Collected: false` with a `FailureReason`; return codes other than 0 and `ERROR_MORE_DATA` (234) are failures, and a per-host timeout keeps results from calls that already finished. This changes the output for DCOnly collections and any host whose sessions weren't read; BloodHound-CE only reads `Results` when `Collected` is true, so the graph is unchanged. Thanks to [@marbas207](https://github.com/marbas207) ([#92](https://github.com/g0h4n/RustHound-CE/pull/92)).
+- SMB modules (sessions and the Remote Registry bind, local groups, WebClient, SYSVOL) signed in to `--domain` instead of the account's own domain from `-u`, so an account from another domain failed with `STATUS_LOGON_FAILURE` while LDAP worked ([#93](https://github.com/g0h4n/RustHound-CE/issues/93)). `smb_user()` becomes `smb_identity()`, which returns the domain named in `-u` (`DOMAIN\user` => `DOMAIN`, `user@domain` => `domain`) and falls back to `--domain` when there is none; the collected domain stays separate for the DC check, group SIDs, `apply_findings` and the SYSVOL root. Only affects runs where `-u` names a domain other than `--domain`. Thanks to [@marbas207](https://github.com/marbas207) ([#94](https://github.com/g0h4n/RustHound-CE/pull/94)).
+
+### Changed
+- `ROADMAP.md`: ESC13 fields ticked. Coverage: CertTemplate 45/47, IssuancePolicies 24/27, total 508/587.
+
 ## 2.5.25 - 2026-10-14
 
 ### Fixed
