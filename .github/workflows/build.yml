@@ -106,7 +106,7 @@ jobs:
                   -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" `
                   -MaximumRetryCount 3 -RetryIntervalSec 5
                 if ((Test-Path $out) -and (Get-Item $out).Length -gt 1MB) { $ok = $true; break }
-                Write-Host "Attempt $i: file too small, retrying"
+                Write-Host "Attempt $i file too small, retrying"
               } catch {
                 Write-Host "Attempt $i failed: $($_.Exception.Message)"
               }
