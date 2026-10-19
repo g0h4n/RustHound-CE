@@ -101,6 +101,32 @@ impl EnterpriseCA {
         self.http_enrollment_endpoints = endpoints;
     }
 
+    /// Inject the `IsUserSpecifiesSanEnabled` registry result (the
+    /// `EditFlags & EDITF_ATTRIBUTESUBJECTALTNAME2` bit read over MS-RRP).
+    /// `collected` is derived from the read: present when there was no failure.
+    pub fn set_user_specifies_san(&mut self, value: bool, failure: Option<String>) {
+        let collected = failure.is_none();
+        self.ca_registry_data.is_user_specifies_san_enabled = IsUserSpecifiesSanEnabled {
+            value,
+            collected,
+            failure_reason: failure,
+        };
+        self.properties.isuserspecifiessanenabledcollected = collected;
+    }
+
+    /// Inject the `RoleSeparationEnabled` registry result read over MS-RRP.
+    /// `collected` is derived from the read: present when there was no failure
+    /// (a value absent on an opened key is a successful read of `false`).
+    pub fn set_role_separation(&mut self, value: bool, failure: Option<String>) {
+        let collected = failure.is_none();
+        self.ca_registry_data.role_separation_enabled = RoleSeparationEnabled {
+            value,
+            collected,
+            failure_reason: failure,
+        };
+        self.properties.roleseparationenabledcollected = collected;
+    }
+
     /// Function to parse and replace value in json template for Enterprise CA object.
     pub fn parse(
         &mut self,
@@ -513,8 +539,10 @@ impl Default for CASecurity {
     }
 }
 
-// EnrollmentAgentRestrictions properties structure
-#[derive(Debug, Clone, Deserialize, Serialize)]
+// EnrollmentAgentRestrictions properties structure. The default is
+// `Collected: false`: it is not read yet (its collection is a later change),
+// so don't claim collection, consistent with the two values below.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct EnrollmentAgentRestrictions {
     #[serde(rename = "Restrictions")]
     restrictions: Vec<String>, // data to validate
@@ -524,18 +552,10 @@ pub struct EnrollmentAgentRestrictions {
     failure_reason: Option<String>,
 }
 
-impl Default for EnrollmentAgentRestrictions {
-    fn default() -> EnrollmentAgentRestrictions {
-        EnrollmentAgentRestrictions {
-            restrictions: Vec::new(),
-            collected: true,
-            failure_reason: None,
-        }
-    }
-}
-
-// IsUserSpecifiesSanEnabled properties structure
-#[derive(Debug, Clone, Deserialize, Serialize)]
+// IsUserSpecifiesSanEnabled properties structure. The default is
+// `Collected: false`: like WebClientRunning, don't claim collection for data
+// the CA-registry module hasn't filled in.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct IsUserSpecifiesSanEnabled {
     #[serde(rename = "Value")]
     value: bool,
@@ -545,18 +565,9 @@ pub struct IsUserSpecifiesSanEnabled {
     failure_reason: Option<String>,
 }
 
-impl Default for IsUserSpecifiesSanEnabled {
-    fn default() -> IsUserSpecifiesSanEnabled {
-        IsUserSpecifiesSanEnabled {
-            value: false,
-            collected: true,
-            failure_reason: None,
-        }
-    }
-}
-
-// RoleSeparationEnabled properties structure
-#[derive(Debug, Clone, Deserialize, Serialize)]
+// RoleSeparationEnabled properties structure. The default is
+// `Collected: false`, as for IsUserSpecifiesSanEnabled.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct RoleSeparationEnabled {
     #[serde(rename = "Value")]
     value: bool,
@@ -564,14 +575,4 @@ pub struct RoleSeparationEnabled {
     collected: bool,
     #[serde(rename = "FailureReason")]
     failure_reason: Option<String>,
-}
-
-impl Default for RoleSeparationEnabled {
-    fn default() -> RoleSeparationEnabled {
-        RoleSeparationEnabled {
-            value: false,
-            collected: true,
-            failure_reason: None,
-        }
-    }
 }

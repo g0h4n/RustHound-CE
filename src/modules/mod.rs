@@ -5,6 +5,7 @@ pub mod resolver;
 pub mod session;
 pub mod localgroup;
 pub mod webclient;
+pub mod registry;
 
 use std::error::Error;
 
@@ -129,6 +130,20 @@ pub async fn run_modules(
     // <https://github.com/g0h4n/IsWebClientRunning-rs>
     if common_args.collection_method.does_web_client() && !cert_auth {
         webclient::run(common_args, &mut ad.computers).await?;
+    }
+
+    // [MODULE - CA REGISTRY] CA registry values over MS-RRP (\winreg) for CARegistryData (issue #97)
+    //
+    //   HKLM EditFlags (policy module)      -> EnterpriseCA.IsUserSpecifiesSanEnabled (ESC6a; ESC6b also needs DCRegistryData)
+    //   HKLM RoleSeparationEnabled (config) -> EnterpriseCA.RoleSeparationEnabled       (informational; no BloodHound edge today)
+    //
+    // Runs under All / CARegistry (like LocalGroup / WebClient), not RegistryOnly.
+    // Gated behind !cert_auth like the other SMB-based modules (no SMB
+    // credentials with certificate auth). dcerpc's RegistryClient binds with a
+    // password or NT hash only; registry::run records a run with neither as
+    // not collected.
+    if common_args.collection_method.does_ca_registry() && !cert_auth {
+        registry::run(common_args, &mut ad.enterprisecas).await?;
     }
 
     // Other modules need to be add here...
