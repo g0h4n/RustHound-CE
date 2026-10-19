@@ -30,7 +30,7 @@
 ### Compatibility with SharpHound
 
 Attribute-by-attribute comparison between `rusthound-ce` and `SharpHound v2.16.0.0`,
-measured on the same domain on `2026-09-30`, `rusthound-ce` side updated after the `LocalGroups` collection over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69)).
+measured on the same domain on `2026-09-30`, `rusthound-ce` side updated after the `LocalGroups` collection over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69)) and the CA registry values over MS-RRP ([#97](https://github.com/g0h4n/RustHound-CE/issues/97)).
 Counts every checkbox of the [List of attributes](#list-of-attributes) section, including nested sub-fields.
 
 | Object | Attributes | :white_check_mark: Implemented | :red_circle: Missing | Compatibility |
@@ -46,14 +46,15 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 | [Container](#container) | 26 | 24 | 2 | `█████████░` 92.3% |
 | [Domain](#domain) | 55 | 50 | 5 | `█████████░` 90.9% |
 | [IssuancePolicies](#issuancepolicies) | 27 | 24 | 3 | `█████████░` 88.9% |
-| [EnterpriseCA](#enterpriseca) | 70 | 52 | 18 | `███████░░░` 74.3% |
+| [EnterpriseCA](#enterpriseca) | 70 | 62 | 8 | `█████████░` 88.6% |
 | [Computer](#computer) | 119 | 82 | 37 | `███████░░░` 68.9% |
-| **Total** | **587** | **508** | **79** | **`█████████░` 86.5%** |
+| **Total** | **587** | **518** | **69** | **`█████████░` 88.2%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
 > `LocalGroups` is now collected over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69));
 > `Computer` is still pulled down by `NTLMRegistryData`, `SmbInfo`,
-> `IsWebClientRunning` and `DCRegistryData`, and `EnterpriseCA` by `CARegistryData`.
+> `IsWebClientRunning` and `DCRegistryData`, and `EnterpriseCA` by
+> `CARegistryData`:`EnrollmentAgentRestrictions` (the CA registry flags are now read over MS-RRP).
 > Those remaining remote attributes require RPC/SMB access to the hosts.
 
 ## Authentification
@@ -89,7 +90,7 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 - [x] GPO-based collection from SYSVOL, reads `GptTmpl.inf` and `Groups.xml`, GPOChanges (LocalAdmins / RemoteDesktopUsers / DcomUsers / PSRemoteUsers) :white_check_mark:
 - [x] Local group enumeration over SAMR (`LocalGroups`, feeds `AdminTo` / `CanRDP` / `CanPSRemote` / `ExecuteDCOM`) :white_check_mark: :new:
 - [ ] Remote registry collection over MS-RRP (`\winreg` over SMB) :red_circle: :new:
-    - [ ] `CARegistryData` (EnrollmentAgentRestrictions, IsUserSpecifiesSanEnabled, RoleSeparationEnabled)
+    - [x] `CARegistryData` (IsUserSpecifiesSanEnabled, RoleSeparationEnabled; EnrollmentAgentRestrictions pending) :new:
     - [ ] `DCRegistryData` (CertificateMappingMethods, StrongCertificateBindingEnforcement, VulnerableNetlogonSecurityDescriptor)
     - [ ] `NTLMRegistryData` (LmCompatibilityLevel, SMB signing, NtlmMinSec, RestrictNtlmTraffic, …)
 - [ ] SMB signing probe (`SmbInfo`) :red_circle: :new:
@@ -98,7 +99,7 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 
 ## Arguments
 
-> :new: Planned. A shared **SMB / RPC collection** option group that paces and bounds every machine-contacting module. These flags MUST be consumed by *all* scan modules, `Session`, `LocalGroup`, `WebClient`, and the future MS-RRP registry collectors, instead of the per-module constants hard-coded today.
+> :new: Planned. A shared **SMB / RPC collection** option group that paces and bounds every machine-contacting module. These flags MUST be consumed by *all* scan modules, `Session`, `LocalGroup`, `WebClient`, `CARegistry` and the future MS-RRP registry collectors, instead of the per-module constants hard-coded today.
 
 - [ ] Multi-value `-c` / `CollectionMethods` :red_circle: :new: accept several collection methods at once, comma-separated or repeated (`-c LocalGroup,WebClient` or `-c LocalGroup -c WebClient`). Replaces the single-value `CollectionMethod` enum with a `CollectionMethods` set; `DCOnly` / `LdapOnly` stay dominant no-machine scopes that suppress every member-machine collector even when combined. Today `-c` takes a single value (`All` is the only way to run several collectors together).
 - [ ] `--workers` :red_circle: :new: max concurrent in-flight SMB sessions (bounded stream), default 50. Replaces the per-module `DEFAULT_CONCURRENCY`
@@ -627,8 +628,8 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 - [ ] `Properties`:`unresolvedpublishedtemplates` :red_circle:
 - [x] `Properties`:`casecuritycollected` :white_check_mark:
 - [ ] `Properties`:`enrollmentagentrestrictionscollected` :red_circle: linked to RPC for `CARegistryData`:`EnrollmentAgentRestrictions` (currently hardcoded to `false`)
-- [ ] `Properties`:`isuserspecifiessanenabledcollected` :red_circle: linked to RPC for `CARegistryData`:`IsUserSpecifiesSanEnabled` (currently hardcoded to `false`)
-- [ ] `Properties`:`roleseparationenabledcollected` :red_circle: (currently hardcoded to `false`)
+- [x] `Properties`:`isuserspecifiessanenabledcollected` :white_check_mark: set from the MS-RRP read of `CARegistryData`:`IsUserSpecifiesSanEnabled`
+- [x] `Properties`:`roleseparationenabledcollected` :white_check_mark: set from the MS-RRP read of `CARegistryData`:`RoleSeparationEnabled`
 - [x] `HostingComputer` :white_check_mark:
 - [x] `EnabledCertTemplates`:`ObjectIdentifier` :white_check_mark:
 - [x] `EnabledCertTemplates`:`ObjectType` :white_check_mark:
@@ -642,18 +643,18 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
     - [x] `Data`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
     - [x] `Collected` :white_check_mark:
     - [x] `FailureReason` :white_check_mark:
-- [ ] `CARegistryData`:`EnrollmentAgentRestrictions` :red_circle: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (emitted as `Collected: true` with an empty list, which hides the fact that nothing was read)
+- [ ] `CARegistryData`:`EnrollmentAgentRestrictions` :red_circle: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (not read yet; emitted as `Collected: false` with an empty list)
     - [ ] `Restrictions` :red_circle:
     - [ ] `Collected` :red_circle:
     - [ ] `FailureReason` :red_circle:
-- [ ] `CARegistryData`:`IsUserSpecifiesSanEnabled` :red_circle: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (emitted as `Collected: true` / `Value: false`; SharpHound reads `true` on the same CA)
-    - [ ] `Value` :red_circle:
-    - [ ] `Collected` :red_circle:
-    - [ ] `FailureReason` :red_circle:
-- [ ] `CARegistryData`:`RoleSeparationEnabled` :red_circle: (emitted as `Collected: true` / `Value: false` without reading the registry)
-    - [ ] `Value` :red_circle:
-    - [ ] `Collected` :red_circle:
-    - [ ] `FailureReason` :red_circle:
+- [x] `CARegistryData`:`IsUserSpecifiesSanEnabled` :white_check_mark: :new: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (policy module `EditFlags` read over MS-RRP; password or NT hash only)
+    - [x] `Value` :white_check_mark:
+    - [x] `Collected` :white_check_mark:
+    - [x] `FailureReason` :white_check_mark:
+- [x] `CARegistryData`:`RoleSeparationEnabled` :white_check_mark: :new: (CA configuration `RoleSeparationEnabled` read over MS-RRP; password or NT hash only)
+    - [x] `Value` :white_check_mark:
+    - [x] `Collected` :white_check_mark:
+    - [x] `FailureReason` :white_check_mark:
 - [x] `HttpEnrollmentEndpoints` :white_check_mark:
     - [x] `Result`:`Url` :white_check_mark:
     - [x] `Result`:`Type` :white_check_mark: (always `WebEnrollmentApplication`)

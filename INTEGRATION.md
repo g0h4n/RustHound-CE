@@ -146,7 +146,7 @@ async fn collect(ldap: &mut ldap3::Ldap) -> Result<(), Box<dyn std::error::Error
 | `pfx` / `pfx_pass` / `crt` / `key` | certificate authentication |
 | `ldapfqdn` / `ip` / `port` | how to reach the DC |
 | `ldaps` | force LDAPS (636) |
-| `collection_method` | `All`, `DCOnly`, `Session`, `RegistryOnly`, `LdapOnly` |
+| `collection_method` | `All`, `DCOnly`, `Session`, `RegistryOnly`, `LdapOnly`, `GPOLocalGroup`, `LocalGroup`, `WebClient`, `CARegistry` |
 | `path` | output directory for the JSON/zip |
 | `zip` | also write a `.zip` |
 | `ldap_filter` | custom LDAP filter (default `(objectClass=*)`) |

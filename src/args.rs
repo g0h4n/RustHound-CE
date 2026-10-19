@@ -56,7 +56,8 @@ pub enum CollectionMethod {
     LdapOnly,       // LDAP
     GPOLocalGroup,  // LDAP + GPOLocalGroup with SMB on SYSVOL
     LocalGroup,     // LDAP + RPC SAMR
-    WebClient       // LDAP + SMB WebDAV pipe probe (IsWebClientRunning)
+    WebClient,      // LDAP + SMB WebDAV pipe probe (IsWebClientRunning)
+    CARegistry      // LDAP + MS-RRP \winreg CA registry values (CARegistryData)
 }
 
 impl CollectionMethod {
@@ -67,6 +68,7 @@ impl CollectionMethod {
     pub fn does_gpo(&self)          -> bool { matches!(self, Self::All | Self::DCOnly | Self::GPOLocalGroup) }
     pub fn does_local_group(&self)  -> bool { matches!(self, Self::All | Self::LocalGroup) }
     pub fn does_web_client(&self)   -> bool { matches!(self, Self::All | Self::WebClient) }
+    pub fn does_ca_registry(&self)  -> bool { matches!(self, Self::All | Self::CARegistry) }
 }
 
 // Current RustHound version
@@ -177,9 +179,9 @@ fn cli() -> Command {
     .arg(Arg::new("collectionmethod")
         .short('c')
         .long("collectionmethod")
-        .help("Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroups (LDAP + SAMR BUILTIN alias membership), WebClient (LDAP + SMB WebDAV pipe probe for IsWebClientRunning) (default: All)")
+        .help("Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroup (LDAP + SAMR BUILTIN alias membership), WebClient (LDAP + SMB WebDAV pipe probe for IsWebClientRunning), CARegistry (LDAP + MS-RRP winreg for the CA registry values IsUserSpecifiesSanEnabled and RoleSeparationEnabled) (default: All)")
         .value_name("COLLECTIONMETHOD")
-        .value_parser(["All", "DCOnly", "Session", "RegistryOnly", "LdapOnly", "GPOLocalGroup", "LocalGroup", "WebClient"])
+        .value_parser(["All", "DCOnly", "Session", "RegistryOnly", "LdapOnly", "GPOLocalGroup", "LocalGroup", "WebClient", "CARegistry"])
         .num_args(0..=1)
         .default_missing_value("All")
     )
@@ -329,6 +331,7 @@ pub fn extract_args() -> Options {
         "GPOLocalGroup" => CollectionMethod::GPOLocalGroup,
         "LocalGroup"    => CollectionMethod::LocalGroup,
         "WebClient"     => CollectionMethod::WebClient,
+        "CARegistry"    => CollectionMethod::CARegistry,
         _               => CollectionMethod::All,
     };
     let ldap_filter = matches.get_one::<String>("ldap-filter").map(|s| s.as_str()).unwrap_or("(objectClass=*)");
@@ -452,6 +455,7 @@ mod tests {
             (GPOLocalGroup, false, false, false, false),
             (LocalGroup,    false, false, false, false),
             (WebClient,     false, false, false, false),
+            (CARegistry,    false, false, false, false),
         ];
         for (method, srvsvc, wkssvc, registry, session) in table {
             assert_eq!(
