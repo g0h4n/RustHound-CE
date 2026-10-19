@@ -113,6 +113,14 @@ impl User {
         self.properties.enabled = true;
         self.domain_sid = domain_sid.to_string();
 
+        // Managed service accounts, by objectClass (SharpHound's IsMSA /
+        // IsGMSA compare case-insensitively).
+        if let Some(classes) = result_attrs.get("objectClass") {
+            let has = |c: &str| classes.iter().any(|v| v.eq_ignore_ascii_case(c));
+            self.properties.msa = has("msDS-ManagedServiceAccount");
+            self.properties.gmsa = has("msDS-GroupManagedServiceAccount");
+        }
+
         // With a check
         let mut group_id: String ="".to_owned();
         for (key, value) in &result_attrs {
@@ -539,6 +547,13 @@ pub struct UserProperties {
     supportedencryptiontypes: Vec<String>,
     sidhistory: Vec<String>,
     allowedtodelegate: Vec<String>,
+    /// Standalone / group managed service account. Written only when true,
+    /// as SharpHound does; BloodHound CE reads them (Kerberoastable
+    /// searches, Owns/WriteOwner and ADCS post-processing).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    msa: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    gmsa: bool,
 }
 
 impl UserProperties {
@@ -591,6 +606,44 @@ mod tests {
         .unwrap();
 
         user
+    }
+
+    fn classes(extra: &str) -> HashMap<String, Vec<String>> {
+        let mut c: Vec<String> = ["top", "person", "organizationalPerson", "user", "computer"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        c.push(extra.to_string());
+        HashMap::from([
+            ("sAMAccountName".to_string(), vec!["svc$".to_string()]),
+            ("objectClass".to_string(), c),
+        ])
+    }
+
+    #[test]
+    fn parse_marks_managed_service_accounts() {
+        let smsa = parse_user_with_attrs(classes("msDS-ManagedServiceAccount")).to_json();
+        assert_eq!(smsa["Properties"]["msa"], true);
+        assert!(smsa["Properties"].get("gmsa").is_none());
+
+        let gmsa = parse_user_with_attrs(classes("msDS-GroupManagedServiceAccount")).to_json();
+        assert_eq!(gmsa["Properties"]["gmsa"], true);
+        assert!(gmsa["Properties"].get("msa").is_none());
+
+        // Ordinary users carry neither property (SharpHound adds them only
+        // when true).
+        let mut attrs = HashMap::new();
+        attrs.insert("sAMAccountName".to_string(), vec!["alice".to_string()]);
+        attrs.insert(
+            "objectClass".to_string(),
+            ["top", "person", "organizationalPerson", "user"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+        let user = parse_user_with_attrs(attrs).to_json();
+        assert!(user["Properties"].get("msa").is_none());
+        assert!(user["Properties"].get("gmsa").is_none());
     }
 
     #[test]

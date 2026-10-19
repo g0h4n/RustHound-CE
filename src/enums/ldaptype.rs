@@ -38,7 +38,12 @@ pub fn get_type(result: &SearchEntry) -> std::result::Result<Type, Type> {
                 && !contains(vals, "group") => {
                 return Ok(Type::User);
             }
-            _ if contains(vals, "msDS-GroupManagedServiceAccount") => {
+            // Group and standalone managed service accounts derive from
+            // `computer`, but SharpHound types both as User
+            // (LdapUtils.ResolveLabel / ComputeLabel), so catch them before
+            // the `computer` arm.
+            _ if contains(vals, "msDS-GroupManagedServiceAccount")
+                || contains(vals, "msDS-ManagedServiceAccount") => {
                 return Ok(Type::User);
             }
             _ if contains(vals, "group") => {
@@ -117,4 +122,42 @@ impl DirectoryPaths {
     pub const PKI_LOCATION              : &'static str = "CN=Public Key Services,CN=Services,CN=Configuration";
     pub const CONFIG_LOCATION           : &'static str = "CN=Configuration";
     pub const ISSUANCE_LOCATION         : &'static str = "CN=OID,CN=Public Key Services,CN=Services,CN=Configuration";
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn entry(classes: &[&str]) -> SearchEntry {
+        SearchEntry {
+            dn: "CN=Test,DC=example,DC=local".to_string(),
+            attrs: HashMap::from([(
+                "objectClass".to_string(),
+                classes.iter().map(|c| c.to_string()).collect(),
+            )]),
+            bin_attrs: HashMap::new(),
+        }
+    }
+
+    const MACHINE: [&str; 5] = ["top", "person", "organizationalPerson", "user", "computer"];
+
+    #[test]
+    fn managed_service_accounts_are_users() {
+        // objectClass as AD returns it for each kind of account.
+        let smsa = [&MACHINE[..], &["msDS-ManagedServiceAccount"]].concat();
+        let gmsa = [&MACHINE[..], &["msDS-GroupManagedServiceAccount"]].concat();
+        assert!(matches!(get_type(&entry(&smsa)), Ok(Type::User)));
+        assert!(matches!(get_type(&entry(&gmsa)), Ok(Type::User)));
+    }
+
+    #[test]
+    fn computers_and_users_keep_their_types() {
+        assert!(matches!(get_type(&entry(&MACHINE)), Ok(Type::Computer)));
+        assert!(matches!(
+            get_type(&entry(&["top", "person", "organizationalPerson", "user"])),
+            Ok(Type::User)
+        ));
+        assert!(matches!(get_type(&entry(&["top", "group"])), Ok(Type::Group)));
+    }
 }
