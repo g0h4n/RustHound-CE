@@ -2975,6 +2975,7 @@ dependencies = [
 name = "rusthound-ce"
 version = "2.5.27"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "bincode",
  "bitflags 2.13.1",
