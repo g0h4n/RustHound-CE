@@ -228,7 +228,7 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 - [x] `PrivilegedSessions`:`Results` :white_check_mark:
 - [x] `PrivilegedSessions`:`Collected` :white_check_mark:
 - [x] `PrivilegedSessions`:`FailureReason` :white_check_mark:
-- [x] `RegistrySessions`:`Results` :white_check_mark:
+- [x] `RegistrySessions`:`Results` :white_check_mark: (read over MS-RRP; password or NT hash only)
 - [x] `RegistrySessions`:`Collected` :white_check_mark:
 - [x] `RegistrySessions`:`FailureReason` :white_check_mark:
 - [x] `LocalGroups` :white_check_mark: (collected over SAMR BUILTIN aliases)
