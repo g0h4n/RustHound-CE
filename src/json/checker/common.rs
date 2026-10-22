@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use aho_corasick::AhoCorasick;
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use regex::Regex;
@@ -314,41 +315,77 @@ pub fn add_childobjects_members<T: LdapObject + Send>(
     let dn_upper: Vec<(String, &String)> =
         dn_sid.iter().map(|(dn, sid)| (dn.to_uppercase(), sid)).collect();
 
-    // Objects are independent; process them across all CPU cores.
-    vec_replaced.par_iter_mut().for_each(|object| {
-        // Get the SID, DN, and name of the current object
-        let sid = object.get_object_identifier().to_uppercase();
-        let dn: &str = sid_to_dn.get(sid.as_str()).copied().unwrap_or(sid.as_str());
-        let name = get_name_from_full_distinguishedname(dn);
+    // Get the DN and name of each object
+    let dns: Vec<String> = vec_replaced
+        .iter()
+        .map(|object| {
+            let sid = object.get_object_identifier().to_uppercase();
+            sid_to_dn
+                .get(sid.as_str())
+                .map(|dn| dn.to_string())
+                .unwrap_or(sid)
+        })
+        .collect();
+    let names: Vec<String> = dns
+        .iter()
+        .map(|dn| get_name_from_full_distinguishedname(dn))
+        .collect();
 
-        // Filter direct members from the pre-uppercased dn list
-        let direct_members: Vec<Member> = dn_upper
-            .iter()
-            .filter_map(|(dn_object_upper, value_sid)| {
-                // Check if dn_object is related to the current object's DN
-                if dn_object_upper.contains(dn)
-                    && dn_object_upper.as_str() != dn
-                    && dn_object_upper
-                        .split(',')
-                        .nth(1)
-                        .and_then(|s| s.split('=').nth(1))
-                        == Some(name.as_str())
-                {
-                    let mut member = Member::new();
-                    *member.object_identifier_mut() = (*value_sid).clone();
-                    *member.object_type_mut() =
-                        sid_type.get(*value_sid).unwrap_or(value_sid).to_string();
-                    if !member.object_identifier().is_empty() {
-                        return Some(member);
-                    }
-                }
-                None
-            })
-            .collect();
+    // An entry is a candidate child of every object whose DN it contains. One
+    // automaton over all the DNs finds them in a single pass over each entry,
+    // instead of one substring test per (object, entry) pair. Objects that
+    // share a DN share a pattern.
+    let mut pattern_ids: HashMap<&str, usize> = HashMap::new();
+    let mut patterns: Vec<&str> = Vec::new();
+    let mut owners: Vec<Vec<usize>> = Vec::new();
+    for (i, dn) in dns.iter().enumerate() {
+        let id = *pattern_ids.entry(dn).or_insert_with(|| {
+            patterns.push(dn);
+            owners.push(Vec::new());
+            patterns.len() - 1
+        });
+        owners[id].push(i);
+    }
+    // Only fails past the automaton's size limit (about 2^31 states).
+    let ac = AhoCorasick::new(&patterns)?;
 
-        // Set direct members for the object
-        object.set_child_objects(direct_members);
-    });
+    // Entries are independent; match them across all CPU cores. A candidate is
+    // kept, as before, when the entry's second RDN is the object's name, the
+    // entry isn't the object itself, and the entry's SID isn't empty.
+    let mut pairs: Vec<(usize, usize)> = dn_upper
+        .par_iter()
+        .enumerate()
+        .flat_map_iter(|(entry, (dn_object_upper, value_sid))| {
+            let parent = dn_object_upper
+                .split(',')
+                .nth(1)
+                .and_then(|s| s.split('=').nth(1));
+            match parent {
+                Some(parent) if !value_sid.is_empty() => ac
+                    .find_overlapping_iter(dn_object_upper)
+                    .flat_map(|m| &owners[m.pattern().as_usize()])
+                    .filter(|&&o| names[o] == parent && *dn_object_upper != dns[o])
+                    .map(|&o| (o, entry))
+                    .collect(),
+                _ => Vec::new(),
+            }
+        })
+        .collect();
+    // Children of each object in dn_sid order, each listed once, as before.
+    pairs.par_sort_unstable();
+    pairs.dedup();
+
+    let mut direct_members: Vec<Vec<Member>> = vec![Vec::new(); vec_replaced.len()];
+    for (object, entry) in pairs {
+        let value_sid = dn_upper[entry].1;
+        let mut member = Member::new();
+        *member.object_identifier_mut() = value_sid.clone();
+        *member.object_type_mut() = sid_type.get(value_sid).unwrap_or(value_sid).to_string();
+        direct_members[object].push(member);
+    }
+    for (object, members) in vec_replaced.iter_mut().zip(direct_members) {
+        object.set_child_objects(members);
+    }
 
     Ok(())
 }
@@ -445,6 +482,40 @@ pub fn replace_guid_gplink<T: LdapObject + Send>(
     vec_replaced: &mut [T],
     dn_sid: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
+    // Distinct GUIDs of all links.
+    let mut guid_ids: HashMap<String, usize> = HashMap::new();
+    for link in vec_replaced.iter().flat_map(|object| object.get_links()) {
+        let next = guid_ids.len();
+        guid_ids.entry(link.guid().to_owned()).or_insert(next);
+    }
+    if guid_ids.is_empty() {
+        return Ok(());
+    }
+    let mut guids = vec![""; guid_ids.len()];
+    for (guid, &id) in &guid_ids {
+        guids[id] = guid;
+    }
+
+    // A link takes the value of the first dn_sid key, in iteration order, that
+    // contains its GUID. Walk the keys once with an automaton over all GUIDs,
+    // instead of scanning the keys once per link. Building it only fails past
+    // its size limit (about 2^31 states).
+    let ac = AhoCorasick::new(&guids)?;
+    let mut first: Vec<Option<&String>> = vec![None; guids.len()];
+    let mut missing = guids.len();
+    for (key, value) in dn_sid {
+        if missing == 0 {
+            break;
+        }
+        for m in ac.find_overlapping_iter(key) {
+            let slot = &mut first[m.pattern().as_usize()];
+            if slot.is_none() {
+                *slot = Some(value);
+                missing -= 1;
+            }
+        }
+    }
+
     // Objects are independent; process them across all CPU cores.
     vec_replaced.par_iter_mut().for_each(|object| {
         // Process links if they exist
@@ -455,12 +526,8 @@ pub fn replace_guid_gplink<T: LdapObject + Send>(
                 .iter()
                 .map(|link| {
                     let mut new_link = link.clone(); // Clone the Link to create a new instance
-                    if let Some(new_guid) = dn_sid
-                        .iter()
-                        .find(|(key, _)| key.contains(link.guid()))
-                        .map(|(_, guid)| guid.to_owned())
-                    {
-                        *new_link.guid_mut() = new_guid;
+                    if let Some(new_guid) = first[guid_ids[link.guid()]] {
+                        *new_link.guid_mut() = new_guid.to_owned();
                     }
                     new_link
                 })
@@ -976,5 +1043,345 @@ mod tests {
         println!("dn_object: {:?}",dn_object);
         println!("contained_by_dn: {:?}",contained_by_dn);
         assert_eq!(contained_by_dn, "CN=USERS,DC=ESSOS,DC=LOCAL".to_string());
+    }
+}
+
+#[cfg(test)]
+mod substring_scan_tests {
+    use std::collections::HashMap;
+
+    use crate::json::checker::common::{
+        add_childobjects_members, build_sid_to_dn, get_name_from_full_distinguishedname,
+        replace_guid_gplink,
+    };
+    use crate::objects::common::{LdapObject, Link, Member};
+    use crate::objects::ou::Ou;
+
+    /// `add_childobjects_members` as of 2.5.27: a substring test of every
+    /// `dn_sid` entry against every object.
+    fn reference_childobjects<T: LdapObject>(
+        vec_replaced: &mut [T],
+        dn_sid: &HashMap<String, String>,
+        sid_type: &HashMap<String, String>,
+    ) {
+        let sid_to_dn = build_sid_to_dn(dn_sid);
+        let dn_upper: Vec<(String, &String)> = dn_sid
+            .iter()
+            .map(|(dn, sid)| (dn.to_uppercase(), sid))
+            .collect();
+        for object in vec_replaced.iter_mut() {
+            let sid = object.get_object_identifier().to_uppercase();
+            let dn: &str = sid_to_dn.get(sid.as_str()).copied().unwrap_or(sid.as_str());
+            let name = get_name_from_full_distinguishedname(dn);
+            let direct_members: Vec<Member> = dn_upper
+                .iter()
+                .filter_map(|(dn_object_upper, value_sid)| {
+                    if dn_object_upper.contains(dn)
+                        && dn_object_upper.as_str() != dn
+                        && dn_object_upper
+                            .split(',')
+                            .nth(1)
+                            .and_then(|s| s.split('=').nth(1))
+                            == Some(name.as_str())
+                    {
+                        let mut member = Member::new();
+                        *member.object_identifier_mut() = (*value_sid).clone();
+                        *member.object_type_mut() =
+                            sid_type.get(*value_sid).unwrap_or(value_sid).to_string();
+                        if !member.object_identifier().is_empty() {
+                            return Some(member);
+                        }
+                    }
+                    None
+                })
+                .collect();
+            object.set_child_objects(direct_members);
+        }
+    }
+
+    /// `replace_guid_gplink` as of 2.5.27: a scan of `dn_sid` per link.
+    fn reference_gplink<T: LdapObject>(vec_replaced: &mut [T], dn_sid: &HashMap<String, String>) {
+        for object in vec_replaced.iter_mut() {
+            let links: Vec<Link> = object
+                .get_links()
+                .iter()
+                .map(|link| {
+                    let mut new_link = link.clone();
+                    if let Some(new_guid) = dn_sid
+                        .iter()
+                        .find(|(key, _)| key.contains(link.guid()))
+                        .map(|(_, guid)| guid.to_owned())
+                    {
+                        *new_link.guid_mut() = new_guid;
+                    }
+                    new_link
+                })
+                .collect();
+            object.set_links(links);
+        }
+    }
+
+    fn ou(id: &str, links: &[&str]) -> Ou {
+        let mut v = serde_json::to_value(Ou::new()).unwrap();
+        v["ObjectIdentifier"] = id.into();
+        let mut ou: Ou = serde_json::from_value(v).unwrap();
+        ou.set_links(
+            links
+                .iter()
+                .map(|g| Link::new(false, g.to_string()))
+                .collect(),
+        );
+        ou
+    }
+
+    fn json(v: &[Ou]) -> serde_json::Value {
+        serde_json::to_value(v).unwrap()
+    }
+
+    /// Runs both versions on copies of `objects` with the same map instance
+    /// (so the same iteration order) and compares the JSON output.
+    fn same_as_reference(
+        objects: Vec<Ou>,
+        dn_sid: &HashMap<String, String>,
+        sid_type: &HashMap<String, String>,
+    ) -> serde_json::Value {
+        let mut ours = objects.clone();
+        let mut theirs = objects;
+        add_childobjects_members(&mut ours, dn_sid, sid_type).unwrap();
+        replace_guid_gplink(&mut ours, dn_sid).unwrap();
+        reference_childobjects(&mut theirs, dn_sid, sid_type);
+        reference_gplink(&mut theirs, dn_sid);
+        let out = json(&ours);
+        assert_eq!(out, json(&theirs));
+        out
+    }
+
+    #[test]
+    fn matches_the_substring_scan_on_edge_cases() {
+        let gpo = "31B2F340-016D-11D2-945F-00C04FB984F9";
+        let dn_sid: HashMap<String, String> = [
+            (
+                format!("CN={{{gpo}}},CN=POLICIES,CN=SYSTEM,DC=X,DC=Y"),
+                "GPO-1",
+            ),
+            (
+                format!("CN=MACHINE,CN={{{gpo}}},CN=POLICIES,CN=SYSTEM,DC=X,DC=Y"),
+                "GPO-CHILD",
+            ),
+            (format!("CN=LONG{gpo}RUN,DC=X,DC=Y"), "LONG-RUN"),
+            ("OU=A,DC=X,DC=Y".into(), "OU-A"),
+            ("CN=U1,OU=A,DC=X,DC=Y".into(), "U1"),
+            ("CN=U2,OU=A,OU=B,OU=A,DC=X,DC=Y".into(), "U2"),
+            ("OU=A,OU=B,OU=A,DC=X,DC=Y".into(), "OU-A2"),
+            ("CN=U3,CN=A,OU=A,DC=X,DC=Y".into(), "U3"),
+            ("CN=E,OU=A,DC=X,DC=Y".into(), ""),
+            ("OU=B,OU=A,DC=X,DC=Y".into(), "OU-B"),
+            ("ou=c,dc=x,dc=y".into(), "OU-C"),
+            ("CN=V,OU=C,DC=X,DC=Y".into(), "V"),
+            ("DC=X,DC=Y".into(), "DOM"),
+            ("CN=W,DC=X,DC=Y".into(), "W"),
+            ("CN=Z,DC=X,DC=YY".into(), "Z"),
+            ("DC=SOLO".into(), "SOLO"),
+            ("CN=Q,DC=SOLO".into(), "Q"),
+        ]
+        .into_iter()
+        .map(|(dn, sid)| (dn, sid.to_string()))
+        .collect();
+        let sid_type: HashMap<String, String> = [("U1", "User"), ("OU-B", "OU")]
+            .into_iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect();
+        let links = [
+            gpo,
+            "016D-11D2-945F-00C04FB984F9",
+            "",
+            "NOPE",
+            "ou-a",
+            "DC=X",
+        ];
+        let objects = ["OU-A", "OU-A2", "OU-B", "OU-C", "DOM", "ou-b", "SOLO"]
+            .iter()
+            .map(|id| ou(id, &links))
+            .collect();
+        let out = same_as_reference(objects, &dn_sid, &sid_type);
+
+        // Not equal by being empty: OU=A lists U1 (and, like the substring
+        // scan, U2 and U3), the domain lists W and Z, and the GPO link was
+        // replaced by one of the three keys that contain the GUID.
+        let kids = out[0]["ChildObjects"].to_string();
+        for id in ["U1", "U2", "U3"] {
+            assert!(kids.contains(&format!("\"{id}\"")), "{id}: {kids}");
+        }
+        let kids = out[4]["ChildObjects"].to_string();
+        assert!(kids.contains("\"W\"") && kids.contains("\"Z\""), "{kids}");
+        // A DN without a comma (substring test path).
+        assert!(
+            out[6]["ChildObjects"].to_string().contains("\"Q\""),
+            "{}",
+            out[6]
+        );
+        let first = out[0]["Links"][0]["GUID"].as_str().unwrap();
+        assert!(
+            ["GPO-1", "GPO-CHILD", "LONG-RUN"].contains(&first),
+            "{first}"
+        );
+    }
+
+    #[test]
+    fn matches_the_substring_scan_on_a_generated_domain() {
+        let base = "DC=CONTOSO,DC=LOCAL";
+        let gpo = |i: usize| format!("{:08X}-0000-0000-0000-{:012X}", i, i);
+        let mut dn_sid: HashMap<String, String> = HashMap::new();
+        let mut objects = Vec::new();
+        for i in 0..20 {
+            dn_sid.insert(
+                format!("CN={{{}}},CN=POLICIES,CN=SYSTEM,{base}", gpo(i)),
+                format!("GPO-{i}"),
+            );
+        }
+        dn_sid.insert(base.to_string(), "DOM".into());
+        objects.push(ou("DOM", &[&gpo(0), &gpo(99)]));
+        for s in 0..40 {
+            // The same OU names under every site, and a nested OU named after
+            // its site.
+            let site = format!("OU=SITE{s},{base}");
+            let mut ous = vec![(site.clone(), format!("SITE{s}"))];
+            for sub in ["USERS", "COMPUTERS", "SERVERS"] {
+                ous.push((format!("OU={sub},{site}"), format!("{sub}-{s}")));
+            }
+            ous.push((
+                format!("OU=SITE{s},OU=SERVERS,{site}"),
+                format!("INNER-{s}"),
+            ));
+            for (k, (dn, id)) in ous.iter().enumerate() {
+                dn_sid.insert(dn.clone(), id.clone());
+                objects.push(ou(id, &[&gpo((s + k) % 21)]));
+                for leaf in 0..3 {
+                    dn_sid.insert(format!("CN=LEAF{leaf},{dn}"), format!("{id}-L{leaf}"));
+                }
+            }
+        }
+        let sid_type = HashMap::new();
+        let out = same_as_reference(objects, &dn_sid, &sid_type);
+        let children: usize = out
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| o["ChildObjects"].as_array().map_or(0, Vec::len))
+            .sum();
+        assert!(children > 500, "{children}");
+    }
+
+    /// Small deterministic generator (SplitMix64), so the test needs no seed
+    /// handling and always checks the same domains.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        }
+
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+
+        fn pick<'a>(&mut self, items: &[&'a str]) -> &'a str {
+            items[self.below(items.len())]
+        }
+    }
+
+    #[test]
+    fn matches_the_substring_scan_on_random_domains() {
+        // Repeated names, escaped commas, and names whose upper case has a
+        // different length (ß -> SS, ﬁ -> FI) or differs from the DN (ǅ, İ).
+        // Upper-case DNs are the common case, and the only ones with children.
+        let names = [
+            "A", "A", "B", "B", "USERS", "USERS", "SRV", "X\\,Y", "X", "Y", "STRASSE", "FILE",
+            "ǄX", "İST", "", "a", "Users", "Straße", "ﬁle", "ǅx", "i̇st",
+        ];
+        let kinds = ["OU", "OU", "CN", "CN", "DC", "ou"];
+        let bases = ["DC=X,DC=Y", "dc=x,dc=y", "DC=SOLO", "DC=X,DC=YY"];
+        let guids = [
+            "31B2F340-016D-11D2-945F-00C04FB984F9",
+            "6AC1786C-016F-11D2-945F-00C04FB984F9",
+            "6ac1786c-016f-11d2-945f-00c04fb984f9",
+            "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA",
+            "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAB",
+        ];
+        let odd_links = [
+            "",
+            "016D-11D2",
+            "{31B2F340-016D-11D2-945F-00C04FB984F9}",
+            "DC=X",
+            "A",
+            "ß",
+        ];
+        let mut rng = Rng(101);
+
+        for _ in 0..100 {
+            let mut dn_sid: HashMap<String, String> = HashMap::new();
+            let mut sid_type: HashMap<String, String> = HashMap::new();
+            let sid_count = 3 + rng.below(80);
+            let mut dns: Vec<String> = Vec::new();
+            for _ in 0..rng.below(80) {
+                // Mostly a child of an earlier DN, so names repeat at several
+                // depths of the same tree.
+                let mut dn = match dns.len() {
+                    n if n > 0 && rng.below(4) != 0 => dns[rng.below(n)].clone(),
+                    _ => rng.pick(&bases).to_string(),
+                };
+                for _ in 0..1 + rng.below(4) / 3 {
+                    dn = format!("{}={},{dn}", rng.pick(&kinds), rng.pick(&names));
+                }
+                dns.push(dn.clone());
+                match rng.below(8) {
+                    0 => dn = format!("CN={{{}}},CN=POLICIES,{dn}", rng.pick(&guids)),
+                    1 => dn = format!("CN=RUN{}{},{dn}", rng.pick(&guids), rng.pick(&guids)),
+                    2 => dn = format!("CN={}", rng.pick(&names)),
+                    _ => {}
+                }
+                // Several DNs can share a SID, and some SIDs are empty.
+                let sid = match rng.below(10) {
+                    0 => String::new(),
+                    1 => format!("s-{}", rng.below(sid_count)),
+                    _ => format!("S-{}", rng.below(sid_count)),
+                };
+                if rng.below(3) == 0 {
+                    sid_type.insert(sid.clone(), rng.pick(&["User", "OU", "Computer"]).into());
+                }
+                dn_sid.insert(dn, sid);
+            }
+
+            // Objects are the SIDs of some entries (sometimes in another case),
+            // or a DN used as identifier when no entry has that SID. An
+            // identifier must resolve to a DN, as both versions assume.
+            let sids: Vec<String> = dn_sid
+                .values()
+                .filter(|sid| dn_sid.values().any(|other| *other == sid.to_uppercase()))
+                .cloned()
+                .collect();
+            let mut objects = Vec::new();
+            for _ in 0..rng.below(40) {
+                let id = match (rng.below(6), sids.is_empty()) {
+                    (0, _) | (_, true) => format!("OU={},{}", rng.pick(&names), rng.pick(&bases)),
+                    (1, false) => sids[rng.below(sids.len())].to_lowercase(),
+                    _ => sids[rng.below(sids.len())].clone(),
+                };
+                let mut links = Vec::new();
+                for _ in 0..rng.below(4) {
+                    links.push(if rng.below(4) == 0 {
+                        rng.pick(&odd_links)
+                    } else {
+                        rng.pick(&guids)
+                    });
+                }
+                objects.push(ou(&id, &links));
+            }
+            same_as_reference(objects, &dn_sid, &sid_type);
+        }
     }
 }
