@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.28 - 2026-10-22
+
+Make the `ChildObjects` and `gPLink` resolution checker passes linear instead of quadratic ([#101](https://github.com/g0h4n/RustHound-CE/issues/101)). `add_childobjects_members` and `replace_guid_gplink` in `src/json/checker/common.rs` compared every OU, domain and container (resp. every gPLink GUID) against every `dn_sid` entry. Both now match with a single **Aho-Corasickù** automaton in one pass, **on a generated 203k-object domain they drop from 71.5s to 0.52s**, and scale linearly from there. Output is identical, element for element and in the same order. Adds `aho-corasick` as a direct dependency (already in the tree via `regex`). Thanks a lot to [marbas207](https://github.com/marbas207) for this clean and well-tested contribution! More information directly from the pull request [#103](https://github.com/g0h4n/RustHound-CE/pull/103)
+
 ## 2.5.27 - 2026-10-19
 
 ### Added
