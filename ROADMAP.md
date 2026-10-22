@@ -30,7 +30,7 @@
 ### Compatibility with SharpHound
 
 Attribute-by-attribute comparison between `rusthound-ce` and `SharpHound v2.16.0.0`,
-measured on the same domain on `2026-09-30`, `rusthound-ce` side updated after the `LocalGroups` collection over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69)) and the CA registry values over MS-RRP ([#97](https://github.com/g0h4n/RustHound-CE/issues/97)).
+measured on the same domain on `2026-09-30`, `rusthound-ce` side updated after the `LocalGroups` collection over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69)), the WebClient (WebDAV) probe over SMB ([#72](https://github.com/g0h4n/RustHound-CE/issues/72)) and the CA registry values over MS-RRP ([#97](https://github.com/g0h4n/RustHound-CE/issues/97)).
 Counts every checkbox of the [List of attributes](#list-of-attributes) section, including nested sub-fields.
 
 | Object | Attributes | :white_check_mark: Implemented | :red_circle: Missing | Compatibility |
@@ -47,13 +47,14 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 | [Domain](#domain) | 55 | 50 | 5 | `█████████░` 90.9% |
 | [IssuancePolicies](#issuancepolicies) | 27 | 24 | 3 | `█████████░` 88.9% |
 | [EnterpriseCA](#enterpriseca) | 70 | 62 | 8 | `█████████░` 88.6% |
-| [Computer](#computer) | 119 | 82 | 37 | `███████░░░` 68.9% |
-| **Total** | **587** | **518** | **69** | **`█████████░` 88.2%** |
+| [Computer](#computer) | 119 | 86 | 33 | `███████░░░` 72.3% |
+| **Total** | **587** | **522** | **65** | **`█████████░` 88.9%** |
 
 > The lowest scores come from remote collection rather than LDAP parsing.
-> `LocalGroups` is now collected over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69));
-> `Computer` is still pulled down by `NTLMRegistryData`, `SmbInfo`,
-> `IsWebClientRunning` and `DCRegistryData`, and `EnterpriseCA` by
+> `LocalGroups` is now collected over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69))
+> and `IsWebClientRunning` over SMB ([#72](https://github.com/g0h4n/RustHound-CE/issues/72));
+> `Computer` is still pulled down by `NTLMRegistryData`, `SmbInfo`
+> and `DCRegistryData`, and `EnterpriseCA` by
 > `CARegistryData`:`EnrollmentAgentRestrictions` (the CA registry flags are now read over MS-RRP).
 > Those remaining remote attributes require RPC/SMB access to the hosts.
 
@@ -270,10 +271,10 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
     - [ ] `Result`:`SigningEnabled` :red_circle: :new:
     - [ ] `Collected` :red_circle: :new:
     - [ ] `FailureReason` :red_circle: :new:
-- [ ] `IsWebClientRunning` :red_circle: :new:
-    - [ ] `Result` :red_circle: :new:
-    - [ ] `Collected` :red_circle: :new:
-    - [ ] `FailureReason` :red_circle: :new:
+- [x] `IsWebClientRunning` :white_check_mark: :new:
+    - [x] `Result` :white_check_mark: :new:
+    - [x] `Collected` :white_check_mark: :new:
+    - [x] `FailureReason` :white_check_mark: :new:
 - [ ] `NtlmSessions` :red_circle: :new:
 - [x] `Status` :white_check_mark:
 - [x] `IsDC` :white_check_mark:
