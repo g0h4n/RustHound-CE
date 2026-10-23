@@ -22,6 +22,8 @@
 //! Authentication reuses the SMB transport: password, pass the hash, or a
 //! Kerberos ticket (pass the ticket) when --kerberos is set. Kerberos material
 //! is built per host, since the AP-REQ targets that host's cifs/<host> SPN.
+//! WINREG is the exception: it binds `\winreg` with NTLM (password or NT hash)
+//! only, and without either it is skipped.
 //!
 //! The target host is the computer FQDN (properties.name, from dNSHostName).
 //! We do NOT use the fqdn->ip map: connections go to the FQDN and rely on DNS.
@@ -40,6 +42,7 @@ use dcerpc::srvsvc::SrvsvcClient;
 use dcerpc::wkssvc::{WkstaUser, WkstaUserClient};
 use smb2_client::SmbClient;
 use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_identity, SmbAuth};
+use crate::modules::registry::{rrp_bind_unavailable, RRP_NEEDS_SECRET};
 
 use crate::args::{CollectionMethod, Options};
 use crate::objects::common::{Session, UserComputerSession};
@@ -65,6 +68,7 @@ enum Call<T> {
     Pending,        // attempted, no result yet
     Done(Vec<T>),
     Failed(String), // the error that is logged and written as FailureReason
+    Skipped(String), // not attempted, known up front: written as FailureReason, logged once by run()
 }
 
 impl<T> Call<T> {
@@ -93,6 +97,18 @@ impl HostFindings {
             logged_on:    pending(method.wkssvc()),
             registry:     pending(method.registry()),
         }
+    }
+
+    /// Don't attempt the WINREG read: it can't succeed with these credentials.
+    fn skip_registry(&mut self, reason: String) {
+        if matches!(self.registry, Call::Pending) { self.registry = Call::Skipped(reason); }
+    }
+
+    /// Whether any call is left to make, i.e. whether the host needs contacting.
+    fn has_pending(&self) -> bool {
+        matches!(self.smb_sessions, Call::Pending)
+            || matches!(self.logged_on, Call::Pending)
+            || matches!(self.registry, Call::Pending)
     }
 
     /// Mark the calls that have no result yet as failed (unreachable host,
@@ -178,6 +194,14 @@ pub async fn run(
         .or_else(|| args.ip.clone())
         .unwrap_or_else(|| args.domain.clone());
 
+    // The WINREG read binds with NTLM (password or NT hash) whatever SMB used,
+    // so with neither (e.g. -k without -p/-H) it can't succeed: don't attempt it.
+    let skip_reason = registry_skip(&method, &password, nt_hash.as_ref());
+    if skip_reason.is_some() {
+        info!("[sessions] no password or NT hash available - not reading registry sessions on {} host(s)",
+              targets.len());
+    }
+
     trace!("[sessions] starting concurrent enumeration (concurrency={DEFAULT_CONCURRENCY})");
     let findings: Vec<HostFindings> = stream::iter(targets)
         .map(|(host, computer_sid)| {
@@ -192,7 +216,7 @@ pub async fn run(
                 trace!("[sessions] [{host}] permit acquired, entering enumerate_host");
                 let hf = enumerate_host(
                     &host, computer_sid, &signin_domain, &user, &password,
-                    nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc, &method,
+                    nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc, &method, skip_reason,
                 ).await;
                 trace!("[sessions] [{host}] enumerate_host returned ({} error(s))", hf.errors().len());
                 hf
@@ -225,9 +249,18 @@ async fn enumerate_host(
     kerberos_ccache: Option<&str>,
     kdc: &str,
     method: &CollectionMethod,
+    registry_skip: Option<&str>,
 ) -> HostFindings {
-    trace!("[sessions] [{host}] enumerate_host: begin, running 445 pre-check");
     let mut hf = HostFindings::new(computer_sid, method);
+    if let Some(reason) = registry_skip {
+        hf.skip_registry(format!("{host} WINREG: {reason}"));
+    }
+    // Nothing left to read (RegistryOnly without a password or hash): don't
+    // contact the host at all.
+    if !hf.has_pending() {
+        return hf;
+    }
+    trace!("[sessions] [{host}] enumerate_host: begin, running 445 pre-check");
 
     // SharpHound-style reachability pre-check: 445 open within budget
     if !is_reachable(host, DEFAULT_PORT_TIMEOUT_MS).await {
@@ -272,7 +305,7 @@ async fn enumerate_host(
                     Err(e)      => Call::Failed(format!("{host} WKSSVC: {e}")),
                 };
             }
-            if method.registry() {
+            if matches!(hf.registry, Call::Pending) {
                 hf.registry = match enum_registry(&mut smb, signin_domain, user, password, nt_hash, host).await {
                     Ok(sids) => Call::Done(sids),
                     Err(e)   => Call::Failed(format!("{host} WINREG: {e} (RemoteRegistry stopped?)")),
@@ -467,10 +500,20 @@ fn apply_findings(
 }
 
 /// Collected / FailureReason of one session list: Collected only when its call
-/// succeeded, FailureReason only when it failed (a call not made leaves both unset).
+/// succeeded, FailureReason when it failed or was skipped (a call the method
+/// doesn't make leaves both unset).
 fn set_status<T>(s: &mut Session, call: &Call<T>) {
     *s.collected_mut() = matches!(call, Call::Done(_));
-    *s.failure_reason_mut() = failure(call).map(str::to_string);
+    *s.failure_reason_mut() = match call {
+        Call::Failed(r) | Call::Skipped(r) => Some(r.clone()),
+        _ => None,
+    };
+}
+
+/// The reason the WINREG read is skipped, if it is: the collection method
+/// reads it, but there's no password or NT hash to bind with.
+fn registry_skip(method: &CollectionMethod, password: &str, nt_hash: Option<&[u8; 16]>) -> Option<&'static str> {
+    (method.registry() && rrp_bind_unavailable(password, nt_hash)).then_some(RRP_NEEDS_SECRET)
 }
 
 /// Parse a hash string into the 16-byte NT hash for pass-the-hash.
@@ -557,6 +600,55 @@ mod tests {
         assert_eq!(status(&r), (false, Some(reason.as_str())));
         assert_eq!(hf.smb_sessions.items().len(), 1);
         assert_eq!(hf.errors(), vec![reason.as_str()]);
+    }
+
+    #[test]
+    fn registry_skipped_without_password_or_hash() {
+        let hash = [0u8; 16];
+        for method in [CollectionMethod::All, CollectionMethod::Session, CollectionMethod::RegistryOnly] {
+            // -k without -p/-H (or no secret at all): the NTLM bind can't succeed
+            assert_eq!(registry_skip(&method, "", None), Some(RRP_NEEDS_SECRET));
+            // -k -p / -k -H (or no -k): the bind is attempted, as before
+            assert_eq!(registry_skip(&method, "Passw0rd", None), None);
+            assert_eq!(registry_skip(&method, "", Some(&hash)), None);
+        }
+        // a method that doesn't read the registry has nothing to skip
+        assert_eq!(registry_skip(&CollectionMethod::LocalGroup, "", None), None);
+    }
+
+    // 192.0.2.1 is TEST-NET-1 (RFC 5737): never reachable, so a host contact
+    // shows up as "445/tcp unreachable".
+    const NO_HOST: &str = "192.0.2.1";
+
+    async fn enumerate_without_secret(method: &CollectionMethod) -> HostFindings {
+        enumerate_host(NO_HOST, COMPUTER_SID.to_string(), "EXAMPLE", "alice", "", None,
+                       None, "dc01.example.local", method, registry_skip(method, "", None)).await
+    }
+
+    #[tokio::test]
+    async fn registry_only_without_secret_contacts_no_host() {
+        let hf = timeout(Duration::from_millis(200), enumerate_without_secret(&CollectionMethod::RegistryOnly))
+            .await
+            .expect("returns without the 445 pre-check");
+        let mut r = Session::default();
+        set_status(&mut r, &hf.registry);
+        let reason = format!("{NO_HOST} WINREG: {RRP_NEEDS_SECRET}");
+        assert_eq!(status(&r), (false, Some(reason.as_str())));
+        // known up front and logged once by run(), not once per host
+        assert!(hf.errors().is_empty());
+    }
+
+    #[tokio::test]
+    async fn skipped_registry_keeps_its_reason_when_the_host_is_unreachable() {
+        let hf = enumerate_without_secret(&CollectionMethod::All).await;
+        let (mut s, mut r) = (Session::default(), Session::default());
+        set_status(&mut s, &hf.smb_sessions);
+        set_status(&mut r, &hf.registry);
+        let unreachable = format!("{NO_HOST}: 445/tcp unreachable");
+        let skipped = format!("{NO_HOST} WINREG: {RRP_NEEDS_SECRET}");
+        assert_eq!(status(&s), (false, Some(unreachable.as_str())));
+        assert_eq!(status(&r), (false, Some(skipped.as_str())));
+        assert_eq!(hf.errors(), vec![unreachable.as_str()]);
     }
 
     #[test]

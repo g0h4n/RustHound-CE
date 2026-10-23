@@ -37,6 +37,17 @@ const DEFAULT_PORT_TIMEOUT_MS: u64 = 1_500; // 445 reachability pre-check budget
 const DEFAULT_PER_CA_TIMEOUT_MS: u64 = 30_000; // whole per-CA budget; larger than the sibling modules' per-host probe timeout because it also covers the sealed MS-RRP round-trips plus the one Remote Registry retry
 const WINREG_RETRY_DELAY_MS: u64 = 3_000; // STATUS_PIPE_NOT_AVAILABLE (0xc00000ac): Remote Registry is trigger-starting; wait then retry once
 
+/// Why an MS-RRP read isn't attempted without a password or NT hash; shared
+/// with the registry sessions read in `modules::session`.
+pub(crate) const RRP_NEEDS_SECRET: &str =
+    "not collected: the MS-RRP bind needs a password or NT hash (dcerpc's RegistryClient has no Kerberos bind yet)";
+
+/// dcerpc's RegistryClient binds with a password or NT hash only (no Kerberos
+/// bind yet), so with neither (e.g. -k without -p/-H) the bind can't succeed.
+pub(crate) fn rrp_bind_unavailable(password: &str, nt_hash: Option<&[u8; 16]>) -> bool {
+    password.is_empty() && nt_hash.is_none()
+}
+
 /// Entry point called by `run_modules`.
 pub async fn run(args: &Options, cas: &mut [EnterpriseCA]) -> Result<(), Box<dyn Error>> {
     // Hard guard: only the method(s) that collect the CA registry reach a host.
@@ -68,14 +79,11 @@ pub async fn run(args: &Options, cas: &mut [EnterpriseCA]) -> Result<(), Box<dyn
         return Ok(());
     }
 
-    // dcerpc's RegistryClient binds with a password or NT hash only (no
-    // Kerberos bind yet). With neither (e.g. -k without -p/-H), don't attempt a doomed
-    // bind against every CA: record the read as not collected, with the
-    // reason, so BloodHound sees Collected:false rather than a false default.
-    if password.is_empty() && nt_hash.is_none() {
-        let reason =
-            "not collected: the MS-RRP bind needs a password or NT hash (dcerpc's RegistryClient has no Kerberos bind yet)"
-                .to_string();
+    // Without a password or NT hash, don't attempt a doomed bind against every
+    // CA: record the read as not collected, with the reason, so BloodHound
+    // sees Collected:false rather than a false default.
+    if rrp_bind_unavailable(&password, nt_hash.as_ref()) {
+        let reason = RRP_NEEDS_SECRET.to_string();
         info!(
             "[careg] no password or NT hash available - not reading CA registry on {} CA(s)",
             targets.len()
