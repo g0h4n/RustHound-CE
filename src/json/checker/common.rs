@@ -300,6 +300,28 @@ fn build_sid_to_dn(dn_sid: &HashMap<String, String>) -> HashMap<&str, &str> {
     sid_to_dn
 }
 
+/// The bytes of `s` in reverse order, for the ChildObjects automaton.
+///
+/// DNs in a domain share long suffixes (`...,OU=X,DC=CORP,DC=COM`). Reversed,
+/// those suffixes become shared prefixes, which the automaton's trie stores
+/// once, so it is built with far fewer states and much less memory.
+///
+/// The matches are the same: a byte string occurs in another exactly when its
+/// reverse occurs in the other's reverse. This is a statement about bytes, so
+/// it holds for multi-byte UTF-8 names too; the reversed bytes aren't valid
+/// UTF-8, but the automaton compares bytes, not characters, and the search was
+/// already a byte-substring search. Only the match offsets change, and only
+/// the matched patterns are used.
+fn reversed(s: &str) -> Vec<u8> {
+    s.bytes().rev().collect()
+}
+
+/// `reversed`, into a buffer that is reused from one entry to the next.
+fn reverse_into(buf: &mut Vec<u8>, s: &str) {
+    buf.clear();
+    buf.extend(s.bytes().rev());
+}
+
 /// This function is to push user SID in ChildObjects v2
 pub fn add_childobjects_members<T: LdapObject + Send>(
     vec_replaced: &mut [T],
@@ -346,30 +368,39 @@ pub fn add_childobjects_members<T: LdapObject + Send>(
         });
         owners[id].push(i);
     }
+    // Both the DNs and the upper-cased entries are reversed, see `reversed`.
     // Only fails past the automaton's size limit (about 2^31 states).
-    let ac = AhoCorasick::new(&patterns)?;
+    let ac = AhoCorasick::new(patterns.iter().map(|dn| reversed(dn)))?;
 
     // Entries are independent; match them across all CPU cores. A candidate is
     // kept, as before, when the entry's second RDN is the object's name, the
-    // entry isn't the object itself, and the entry's SID isn't empty.
+    // entry isn't the object itself, and the entry's SID isn't empty. Each
+    // rayon task reverses its entries into one reused buffer.
+    let longest = dn_upper.iter().map(|(dn, _)| dn.len()).max().unwrap_or(0);
     let mut pairs: Vec<(usize, usize)> = dn_upper
         .par_iter()
         .enumerate()
-        .flat_map_iter(|(entry, (dn_object_upper, value_sid))| {
-            let parent = dn_object_upper
-                .split(',')
-                .nth(1)
-                .and_then(|s| s.split('=').nth(1));
-            match parent {
-                Some(parent) if !value_sid.is_empty() => ac
-                    .find_overlapping_iter(dn_object_upper)
-                    .flat_map(|m| &owners[m.pattern().as_usize()])
-                    .filter(|&&o| names[o] == parent && *dn_object_upper != dns[o])
-                    .map(|&o| (o, entry))
-                    .collect(),
-                _ => Vec::new(),
-            }
-        })
+        .map_init(
+            || Vec::with_capacity(longest),
+            |haystack, (entry, (dn_object_upper, value_sid))| {
+                let parent = dn_object_upper
+                    .split(',')
+                    .nth(1)
+                    .and_then(|s| s.split('=').nth(1));
+                match parent {
+                    Some(parent) if !value_sid.is_empty() => {
+                        reverse_into(haystack, dn_object_upper);
+                        ac.find_overlapping_iter(&*haystack)
+                            .flat_map(|m| &owners[m.pattern().as_usize()])
+                            .filter(|&&o| names[o] == parent && *dn_object_upper != dns[o])
+                            .map(|&o| (o, entry))
+                            .collect()
+                    }
+                    _ => Vec::new(),
+                }
+            },
+        )
+        .flatten_iter()
         .collect();
     // Children of each object in dn_sid order, each listed once, as before.
     pairs.par_sort_unstable();
@@ -1048,11 +1079,13 @@ mod tests {
 
 #[cfg(test)]
 mod substring_scan_tests {
-    use std::collections::HashMap;
+    use std::collections::{BTreeSet, HashMap};
+
+    use aho_corasick::AhoCorasick;
 
     use crate::json::checker::common::{
         add_childobjects_members, build_sid_to_dn, get_name_from_full_distinguishedname,
-        replace_guid_gplink,
+        replace_guid_gplink, reversed,
     };
     use crate::objects::common::{LdapObject, Link, Member};
     use crate::objects::ou::Ou;
@@ -1383,5 +1416,89 @@ mod substring_scan_tests {
             }
             same_as_reference(objects, &dn_sid, &sid_type);
         }
+    }
+
+    /// (pattern, entry) pairs found by an automaton over `patterns`, run on
+    /// every entry, with or without reversing both.
+    fn automaton_pairs(
+        patterns: &[String],
+        entries: &[String],
+        reverse: bool,
+    ) -> BTreeSet<(usize, usize)> {
+        let bytes = |s: &String| {
+            if reverse {
+                reversed(s)
+            } else {
+                s.as_bytes().to_vec()
+            }
+        };
+        let ac = AhoCorasick::new(patterns.iter().map(bytes)).unwrap();
+        entries
+            .iter()
+            .enumerate()
+            .flat_map(|(e, entry)| {
+                ac.find_overlapping_iter(&bytes(entry))
+                    .map(|m| (m.pattern().as_usize(), e))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reversed_automaton_finds_the_same_pairs() {
+        // Multi-byte names, including ones that share bytes in different
+        // orders (é = C3 A9, © = C2 A9, Ã = C3 83, é as e + U+0301), names
+        // whose upper case changes length, and the empty name.
+        let names = [
+            "A", "USERS", "SRV", "X\\,Y", "Straße", "ﬁle", "ǅx", "İST", "é", "É", "e\u{301}", "©Ã",
+            "Ã©", "ÃÃ", "日本", "本日", "Ωμέ", "🙂", "🙃🙂", "", "a",
+        ];
+        let kinds = ["OU", "CN", "DC", "ou"];
+        let bases = ["DC=X,DC=Y", "dc=x,dc=y", "DC=É,DC=日本", "DC=SOLO"];
+        let mut rng = Rng(103);
+        let mut children = 0;
+
+        for _ in 0..100 {
+            let mut dns: Vec<String> = Vec::new();
+            for _ in 0..rng.below(120) {
+                let mut dn = match dns.len() {
+                    n if n > 0 && rng.below(4) != 0 => dns[rng.below(n)].clone(),
+                    _ => rng.pick(&bases).to_string(),
+                };
+                for _ in 0..1 + rng.below(3) {
+                    dn = format!("{}={},{dn}", rng.pick(&kinds), rng.pick(&names));
+                }
+                dns.push(dn);
+            }
+            // As in `add_childobjects_members`: the patterns are object DNs as
+            // they are, the entries are upper-cased before they are reversed.
+            let patterns: Vec<String> = dns.iter().step_by(2).cloned().collect();
+            let entries: Vec<String> = dns.iter().map(|dn| dn.to_uppercase()).collect();
+
+            let forward = automaton_pairs(&patterns, &entries, false);
+            assert_eq!(forward, automaton_pairs(&patterns, &entries, true));
+            // Both are the substring test.
+            let contains: BTreeSet<(usize, usize)> = (0..patterns.len())
+                .flat_map(|p| (0..entries.len()).map(move |e| (p, e)))
+                .filter(|&(p, e)| entries[e].contains(patterns[p].as_str()))
+                .collect();
+            assert_eq!(forward, contains);
+
+            // And the whole pass agrees with the substring scan on these names.
+            let dn_sid: HashMap<String, String> = dns
+                .iter()
+                .enumerate()
+                .map(|(i, dn)| (dn.clone(), format!("S-{i}")))
+                .collect();
+            let objects = dns.iter().map(|dn| ou(&dn_sid[dn], &[])).collect();
+            let out = same_as_reference(objects, &dn_sid, &HashMap::new());
+            children += out
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|o| o["ChildObjects"].as_array().map_or(0, Vec::len))
+                .sum::<usize>();
+        }
+        assert!(children > 100, "{children}");
     }
 }
