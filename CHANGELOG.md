@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.29 - 2026-10-27
+
+### Changed
+
+Shrink the ChildObjects automaton by reversing DNs so shared suffixes become shared prefixes ([#105](https://github.com/g0h4n/RustHound-CE/issues/105)). The Aho-Corasick automaton from 2.5.28 is built over the objects' DNs, which share long suffixes (`...,OU=DEPT001,DC=CORP,DC=EXAMPLE,DC=COM`) a trie can't fold. Reversing the bytes of the DNs and of each upper-cased `dn_sid` entry turns those suffixes into prefixes: on a container-heavy 801k-object domain the build's heap peak drops from 1,012 MB to 281 MB and `add_childobjects_members` from 5.10 s to 3.53 s. Output is unchanged, element for element and in the same order, UTF-8 names included; the gPLink automaton is untouched.
+
+### Fixed
+
+Skip the WINREG (`RegistrySessions`) read when there is no password or NT hash, instead of failing with a misleading reason ([#102](https://github.com/g0h4n/RustHound-CE/issues/102)). The MS-RRP `\winreg` bind uses NTLM with the command-line secret, so under `-k` without `-p`/`-H` it failed on every host and `RegistrySessions` came back `Collected: false` with `(RemoteRegistry stopped?)`. The read now follows the CA registry rule (shared check and reason), is decided before any host is contacted, and is logged once; `-k -p` and `-k -H` behave as before. A real Kerberos bind needs changes inside the `dcerpc` dependency and is tracked separately.
+
+Thanks a lot to [marbas207](https://github.com/marbas207) for these two clean and well-tested contributions! More information directly from the pull requests [#106](https://github.com/g0h4n/RustHound-CE/pull/106) and [#104](https://github.com/g0h4n/RustHound-CE/pull/104)
+
 ## 2.5.28 - 2026-10-22
 
 Make the `ChildObjects` and `gPLink` resolution checker passes linear instead of quadratic ([#101](https://github.com/g0h4n/RustHound-CE/issues/101)). `add_childobjects_members` and `replace_guid_gplink` in `src/json/checker/common.rs` compared every OU, domain and container (resp. every gPLink GUID) against every `dn_sid` entry. Both now match with a single **Aho-Corasickù** automaton in one pass, **on a generated 203k-object domain they drop from 71.5s to 0.52s**, and scale linearly from there. Output is identical, element for element and in the same order. Adds `aho-corasick` as a direct dependency (already in the tree via `regex`). Thanks a lot to [marbas207](https://github.com/marbas207) for this clean and well-tested contribution! More information directly from the pull request [#103](https://github.com/g0h4n/RustHound-CE/pull/103)

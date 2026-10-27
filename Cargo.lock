@@ -2973,7 +2973,7 @@ dependencies = [
 
 [[package]]
 name = "rusthound-ce"
-version = "2.5.28"
+version = "2.5.29"
 dependencies = [
  "aho-corasick",
  "anyhow",
