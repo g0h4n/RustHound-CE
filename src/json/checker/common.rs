@@ -692,7 +692,7 @@ pub fn replace_sid_members(
 ) -> Result<(), Box<dyn Error>> {
     // Unresolved members keep an unknown type; let BloodHound decide.
     let default_type = "Base".to_string();   // was "Group"
-    
+
     // Groups are independent and the maps/trusts are read-only, so resolve
     // members across all CPU cores.
     vec_groups.par_iter_mut().for_each(|group| {
@@ -845,8 +845,8 @@ pub fn add_type_for_ace<T: LdapObject + Send>(
     object: &mut [T],
     sid_type: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Default type for unmatched SIDs
-    let default_type = "Group".to_string();
+    // Unmatched ACE principals keep an unknown type; BloodHound resolves it.
+    let default_type = "Base".to_string();
 
     // Each object's ACEs are independent and `sid_type` is read-only here, so
     // this is embarrassingly parallel: spread it across all CPU cores.
@@ -938,8 +938,8 @@ pub fn add_contained_by_for<T: LdapObject + Send>(
     dn_sid: &HashMap<String, String>,
     sid_type: &HashMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Default type for unmatched SIDs
-    let default_type = "Group".to_string();
+    // Unresolved child objects keep an unknown type; BloodHound resolves it.
+    let default_type = "Base".to_string();   // was "Group"
 
     // Reverse index SID -> DN, built once. This used to be an O(n) linear scan
     // over `dn_sid` *per object* (`dn_sid.iter().find_map(...)`), i.e. O(n^2)
