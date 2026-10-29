@@ -372,15 +372,7 @@ pub fn is_domain_controller(local_domain_name: &str, cli_domain: &str) -> bool {
 /// domain SIDs come back as "Base" because telling User from Group from
 /// Computer needs LDAP. RustHound-CE resolves it at merge time.
 pub fn guess_object_type(sid: &Sid) -> &'static str {
-    let s = sid_to_string(sid);
-    match s.as_str() {
-        // Well-known groups that appear constantly in local admin lists.
-        "S-1-5-32-544" | "S-1-5-32-545" | "S-1-5-32-555" | "S-1-5-32-562"
-        | "S-1-5-32-580" | "S-1-5-11" | "S-1-5-4" | "S-1-1-0" => "Group",
-        // Local SYSTEM / LOCAL SERVICE / NETWORK SERVICE.
-        "S-1-5-18" | "S-1-5-19" | "S-1-5-20" => "User",
-        _ => "Base",
-    }
+    crate::enums::sid::guess_object_type_from_str(&sid_to_string(sid))
 }
 
 #[cfg(test)]
