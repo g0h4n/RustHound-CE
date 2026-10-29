@@ -690,8 +690,9 @@ pub fn replace_sid_members(
     sid_type: &HashMap<String, String>,
     vec_trusts: &[Trust],
 ) -> Result<(), Box<dyn Error>> {
-    let default_type = "Group".to_string();
-
+    // Unresolved members keep an unknown type; let BloodHound decide.
+    let default_type = "Base".to_string();   // was "Group"
+    
     // Groups are independent and the maps/trusts are read-only, so resolve
     // members across all CPU cores.
     vec_groups.par_iter_mut().for_each(|group| {
