@@ -105,6 +105,19 @@ pub fn decode_guid_le(raw_guid: &[u8]) -> String {
     str_guid
 }
 
+/// Guess an ObjectType from the SID alone. Well-known SIDs get a real
+/// label; any domain SID returns "Base", because you cannot tell User
+/// from Group from Computer from a domain SID alone (the RID space is
+/// shared). BloodHound resolves it at merge time. See #107 / #87.
+pub fn guess_object_type_from_str(sid: &str) -> &'static str {
+    match sid {
+        "S-1-5-32-544" | "S-1-5-32-545" | "S-1-5-32-555" | "S-1-5-32-562"
+        | "S-1-5-32-580" | "S-1-5-11" | "S-1-5-4" | "S-1-1-0" => "Group",
+        "S-1-5-18" | "S-1-5-19" | "S-1-5-20" => "User",
+        _ => "Base",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
