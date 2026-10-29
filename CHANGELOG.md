@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.30 - 2026-10-29
+
+### Fixed
+
+Foreign principals from a trusted forest were emitted with `ObjectType: "Group"`, so once both forests were ingested some foreign users rendered as Group nodes in BloodHound CE ([#107](https://github.com/g0h4n/RustHound-CE/issues/107)). `Fsp::parse` guessed the type from the SID, labelling `User` only when the name split on `-` had 17+ parts and `Group` otherwise; a domain SID has ~8 parts, so the `User` branch never fired and every foreign member fell to `Group`. The checker's unresolved-SID fallbacks (`replace_sid_members`, `add_type_for_ace`, `add_contained_by_for`) hardcoded `Group` as well. Since User, Group and Computer can't be told apart from a domain SID alone (shared RID space), a new `guess_object_type_from_str` in `enums::sid` now labels the well-known SIDs and returns `Base` otherwise, the same convention the SAMR collector already uses, and those four fallbacks default to `Base`. Known principals still resolve to their real type through `sid_type`; only genuinely unknown SIDs become `Base`, which BloodHound reconciles at merge time. Well-known group SIDs keep their `Group` label and `MemberOf` edges are unchanged. `add_type_for_allowtedtoact` still defaults to `Computer` (RBCD). Thanks to [@Zhaokix](https://github.com/Zhaokix) for the detailed report, building on the FSP identifier fix from [#87](https://github.com/g0h4n/RustHound-CE/issues/87).
+
 ## 2.5.29 - 2026-10-27
 
 ### Changed
