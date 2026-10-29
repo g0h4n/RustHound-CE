@@ -10,7 +10,7 @@ use crate::enums::regex::OBJECT_SID_RE1;
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::utils::date::string_to_epoch;
 use crate::enums::secdesc::LdapSid;
-use crate::enums::sid::{objectsid_to_vec8, sid_maker};
+use crate::enums::sid::{objectsid_to_vec8, sid_maker, guess_object_type_from_str};
 
 /// FSP (ForeignSecurityPrincipal) structure
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -76,17 +76,10 @@ impl Fsp {
                     let name = format!("{}-{}", domain, &value.first().unwrap_or(&"".to_owned()));
                     self.properties.name = name.to_uppercase();
 
-                    // Type for group Member maker
-                    // based on https://docs.microsoft.com/fr-fr/troubleshoot/windows-server/identity/security-identifiers-in-windows
-                    let split = value[0].split("-").collect::<Vec<&str>>();
-
-                    // Not currently used:
-                    //let last = split.iter().last().unwrap_or(&"0").parse::<i32>().unwrap_or(0);
-                    if split.len() >= 17 {
-                        ftype = "User";
-                    } else {
-                        ftype = "Group";
-                    }
+                    // A FSP name is the SID of the foreign principal. Do not
+                    // guess User/Group from the SID: label the well-known
+                    // ones and leave the rest as "Base". See #107.
+                    ftype = guess_object_type_from_str(&value[0]);
                 }
                 "whenCreated" => {
                     let epoch = string_to_epoch(&value[0])?;
@@ -396,5 +389,8 @@ mod tests {
             groups[0].members()[0].object_identifier(),
             "S-1-5-21-1111111111-2222222222-3333333333-1108"
         );
+        
+        // A foreign domain user must not be asserted as "Group".
+        assert_eq!(groups[0].members()[0].object_type(), "Base");
     }
 }
