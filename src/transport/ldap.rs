@@ -58,6 +58,14 @@ pub async fn ldap_auth(options: &Options) -> Result<ldap3::Ldap, Box<dyn Error>>
     let mut consettings = LdapConnSettings::new()
         .set_conn_timeout(options.ldap_timeout)
         .set_no_tls_verify(true);
+
+    // Resolve the DC hostname with trust-dns before connecting: ldap3 would
+    // otherwise hand it to getaddrinfo, which is fatal in static glibc builds
+    // when NSS has to dlopen a module (see `resolve_url_host`).
+    let connect_url = match resolve_url_host(&ldap_args.s_url).await {
+        Some(resolved) => resolved,
+        None => ldap_args.s_url.clone(),
+    };
     if use_cert {
         let config = crate::transport::cert::build_client_config(
             options.pfx.as_deref(),
@@ -71,7 +79,7 @@ pub async fn ldap_auth(options: &Options) -> Result<ldap3::Ldap, Box<dyn Error>>
         }
     }
 
-    let (conn, mut ldap) = LdapConnAsync::with_settings(consettings, &ldap_args.s_url).await?;
+    let (conn, mut ldap) = LdapConnAsync::with_settings(consettings, &connect_url).await?;
     ldap3::drive!(conn);
 
     let domain = &options.domain;
@@ -478,6 +486,64 @@ fn nt_hash_to_ntlm_password(nt: &[u8; 16]) -> String {
     password
 }
 
+/// Split an LDAP URL into `(scheme://, host, rest)`.
+///
+/// `host` never carries brackets nor the port, and `rest` starts right after it
+/// (`:port`, `/path` or an empty string).
+fn split_url(url: &str) -> Option<(&str, &str, &str)> {
+    let scheme_end = url.find("://")? + 3;
+    let prefix = &url[..scheme_end];
+    let rest = &url[scheme_end..];
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..authority_end];
+    let (host, host_end) = match authority.strip_prefix('[') {
+        Some(bracketed) => {
+            let close = bracketed.find(']')?;
+            (&bracketed[..close], close + 2)
+        }
+        None => match authority.rfind(':') {
+            Some(colon) => (&authority[..colon], colon),
+            None => (authority, authority.len()),
+        },
+    };
+    Some((prefix, host, &rest[host_end..]))
+}
+
+/// Host of an LDAP URL, without brackets nor port.
+fn url_host(url: &str) -> &str {
+    split_url(url).map(|(_, host, _)| host).unwrap_or("")
+}
+
+/// `url` with its host replaced by `host`, keeping the scheme, port and path.
+fn with_host(url: &str, host: &str) -> String {
+    let Some((prefix, _, tail)) = split_url(url) else {
+        return url.to_string();
+    };
+    let rendered = if host.contains(':') { format!("[{host}]") } else { host.to_string() };
+    format!("{prefix}{rendered}{tail}")
+}
+
+/// Resolve the host of an LDAP URL to an IP literal, returning the rewritten URL.
+///
+/// `getaddrinfo` hands name lookups to NSS, which `dlopen`s the configured NSS
+/// modules (e.g. `libnss_mdns4_minimal.so.2`) and, through them, `libc.so.6`. In a
+/// statically linked glibc binary that second libc re-runs `__libc_early_init` and
+/// the process dies with a divide error (SIGFPE) instead of just failing to
+/// resolve. Resolving with the in-tree trust-dns resolver keeps hostname lookups
+/// away from NSS, so the URL carries an IP literal before anything connects.
+///
+/// Returns `None` when the URL already carries an IP literal (nothing to do), or
+/// when resolution fails, in which case the caller keeps the original URL.
+pub(crate) async fn resolve_url_host(s_url: &str) -> Option<String> {
+    let host = url_host(s_url);
+    if host.is_empty() || host.parse::<std::net::IpAddr>().is_ok() {
+        return None;
+    }
+    let ip = crate::modules::resolver::resolv::resolve_hostname(host).await?;
+    debug!("Resolved {} to {}", host, ip);
+    Some(with_host(s_url, &ip))
+}
+
 /// Function to prepare LDAP url.
 fn prepare_ldap_url(ldaps: bool, ip: Option<&str>, port: Option<u16>, domain: &str) -> String {
     let protocol = if ldaps || port.unwrap_or(0) == 636 { "ldaps" } else { "ldap" };
@@ -637,5 +703,31 @@ mod tests {
         assert!(utf16_bytes.len() > 512);
         let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
         assert_eq!(hash_portion, b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+    }
+
+    #[test]
+    fn url_host_strips_scheme_and_port() {
+        assert_eq!(url_host("ldaps://dc01.corp.local:636"), "dc01.corp.local");
+        assert_eq!(url_host("ldap://dc01.corp.local"), "dc01.corp.local");
+        assert_eq!(url_host("ldaps://dc01"), "dc01");
+        assert_eq!(url_host("ldaps://10.0.0.5:636"), "10.0.0.5");
+        assert_eq!(url_host("ldaps://[::1]:636"), "::1");
+    }
+
+    #[test]
+    fn with_host_keeps_scheme_and_port() {
+        assert_eq!(with_host("ldaps://dc01.corp.local:636", "10.0.0.5"), "ldaps://10.0.0.5:636");
+        assert_eq!(with_host("ldap://dc01.corp.local", "10.0.0.5"), "ldap://10.0.0.5");
+    }
+
+    #[test]
+    fn with_host_brackets_ipv6_literal() {
+        assert_eq!(with_host("ldaps://dc01.corp.local:636", "::1"), "ldaps://[::1]:636");
+    }
+
+    #[tokio::test]
+    async fn ip_literal_url_is_not_resolved_again() {
+        assert_eq!(resolve_url_host("ldaps://10.0.0.5:636").await, None);
+        assert_eq!(resolve_url_host("ldaps://[::1]:636").await, None);
     }
 }

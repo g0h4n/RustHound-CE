@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+`-i`/`--ldapip` accepting a Domain Controller **hostname** no longer kills the process with `Floating point exception (core dumped)` before the bind. The signal was SIGFPE, not a segmentation fault, and it came from glibc, not from the TLS stack: the name went to `getaddrinfo`, NSS `dlopen`ed the module configured in `/etc/nsswitch.conf` (`libnss_mdns4_minimal.so.2` on Ubuntu hosts with `libnss-mdns`), and loading that module pulled `libc.so.6` into a **statically linked** (`+crt-static`) binary. glibc does not support that second libc: its ELF init runs `__libc_early_init` → `__pthread_early_init` → `__nptl_tls_static_size_for_stack`, whose `roundup(_dl_tls_static_size, _dl_tls_static_align)` divides by a `_dl_tls_static_align` the static startup never set, so `div rsi` at `libc+0x175c79` trapped with a zero divisor and every tokio thread died at once. The LDAP URL is now resolved with the in-tree trust-dns resolver (`src/modules/resolver/resolv.rs`, system resolver configuration, pure Rust) before `LdapConnAsync::with_settings` ever sees it, so hostname lookups never reach NSS: `src/transport/ldap.rs` gains `url_host` / `with_host` / `resolve_url_host`, which rewrite `ldaps://dc01.corp.local:636` to `ldaps://10.0.0.5:636` while keeping the scheme, port and path, bracket IPv6 literals, skip URLs that already carry an IP, and fall back to the untouched URL when resolution fails (so behaviour is unchanged anywhere NSS was working). Verified on a Ubuntu 22.04 host where the static binary crashed on every run with `-i <fqdn>` and was clean with `-i <ip>`. `make build_linux_x86_64` accordingly drops `-C target-feature=+crt-static` and ships a dynamic glibc binary; `build_linux_musl` remains the fully static option. `--ldapip` help now mentions hostnames.
+
 ## 2.5.52 - 2026-11-19
 
 ### Added

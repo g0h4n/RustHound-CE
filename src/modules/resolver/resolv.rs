@@ -67,6 +67,21 @@ pub async fn resolver(
    None
 }
 
+/// Resolve a single hostname to an IP address using the system resolver
+/// configuration, without going through `getaddrinfo`/NSS.
+pub async fn resolve_hostname(host: &str) -> Option<String> {
+   let resolver = TokioAsyncResolver::tokio_from_system_conf().ok()?;
+   let response = resolver.lookup_ip(host).await.ok()?;
+   let mut fallback: Option<IpAddr> = None;
+   for address in response.iter() {
+      if address.is_ipv4() {
+         return Some(address.to_string());
+      }
+      fallback.get_or_insert(address);
+   }
+   fallback.map(|address| address.to_string())
+}
+
 /// Function to prepare resolver configuration
 pub fn make_resolver_conf(
    dns_tcp: bool, 

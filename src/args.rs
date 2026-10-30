@@ -196,7 +196,7 @@ fn cli() -> Command {
     .arg(Arg::new("ldapip")
         .short('i')
         .long("ldapip")
-        .help("Domain Controller IP address like: 192.168.1.10")
+        .help("Domain Controller IP address or hostname like: 192.168.1.10 or dc01.domain.local")
         .required(false)
         .value_parser(value_parser!(String))
     )

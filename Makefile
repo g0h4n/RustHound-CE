@@ -100,8 +100,13 @@ build_linux_aarch64:
 
 linux_aarch64: check_rustup install_cross build_linux_aarch64
 
+# The x86_64 GNU build is deliberately *dynamic*: a statically linked glibc
+# binary aborts with SIGFPE (`div` by a zero _dl_tls_static_align inside
+# __libc_early_init) as soon as NSS has to dlopen a module for a hostname
+# lookup, which pulls libc.so.6 into the static process. Use `build_linux_musl`
+# when a fully static binary is really needed.
 build_linux_x86_64:
-	RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --features nogssapi --target x86_64-unknown-linux-gnu --no-default-features
+	cargo build --release --features nogssapi --target x86_64-unknown-linux-gnu --no-default-features
 	cp target/x86_64-unknown-linux-gnu/release/$(prog) ./$(prog)_x86_64
 	@echo -e "[+] You can find \033[1;32m$(prog)_x86_64\033[0m in your current folder."
 
