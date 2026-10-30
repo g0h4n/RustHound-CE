@@ -387,7 +387,8 @@ async fn is_reachable(host: &str, port_timeout_ms: Duration) -> bool {
     matches!(
         timeout(
             port_timeout_ms,
-            TcpStream::connect(format!("{host}:445"))
+            // Resolve inside the timeout so DNS counts against the budget.
+            async { TcpStream::connect(crate::transport::resolved_host_port(host, 445).await).await }
         )
         .await,
         Ok(Ok(_))

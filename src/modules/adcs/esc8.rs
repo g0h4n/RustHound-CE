@@ -42,7 +42,7 @@ use crate::utils::b64::{b64_decode, b64_encode};
 use log::{debug, warn};
 use reqwest::blocking::Client;
 use reqwest::header::{AUTHORIZATION, WWW_AUTHENTICATE};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
 // NTLM AvPair IDs
@@ -395,31 +395,29 @@ enum PortState {
 /// Run before the HTTP request so that "nothing is listening" can be reported as
 /// `NotVulnerable_PortInaccessible` rather than as a transport failure.
 fn check_port(host: &str, port: u16, timeout: Duration) -> PortState {
-    let addrs = match (host, port).to_socket_addrs() {
-        Ok(a) => a.collect::<Vec<_>>(),
-        Err(e) => {
+    // `host` may be a name: resolve it with trust-dns (never NSS/getaddrinfo),
+    // which also keeps this off the static-glibc SIGFPE path.
+    let target = crate::transport::resolved_host_port_blocking(host, port);
+    let addr: SocketAddr = match target.parse() {
+        Ok(addr) => addr,
+        Err(_) => {
             return PortState::Unresolved(format!(
-                "DNS resolution failed for {}:{}: {}",
-                host, port, e
+                "DNS resolution failed for {}:{}",
+                host, port
             ));
         }
     };
 
-    if addrs.is_empty() {
-        return PortState::Unresolved(format!("no address resolved for {}:{}", host, port));
-    }
-
-    for addr in &addrs {
-        match TcpStream::connect_timeout(addr, timeout) {
-            Ok(_) => {
-                debug!("ESC8 port check {}:{} open ({})", host, port, addr);
-                return PortState::Open;
-            }
-            Err(e) => debug!("ESC8 port check {} unreachable: {}", addr, e),
+    match TcpStream::connect_timeout(&addr, timeout) {
+        Ok(_) => {
+            debug!("ESC8 port check {}:{} open ({})", host, port, addr);
+            PortState::Open
+        }
+        Err(e) => {
+            debug!("ESC8 port check {} unreachable: {}", addr, e);
+            PortState::Closed
         }
     }
-
-    PortState::Closed
 }
 
 // Internal probes
@@ -443,6 +441,7 @@ fn probe_http(host: &str, url: &str, timeout: Duration) -> ProbeOutcome {
     let client = match Client::builder()
         .timeout(timeout)
         .connect_timeout(timeout)
+        .dns_resolver(std::sync::Arc::new(crate::transport::TrustDnsResolver))
         .redirect(reqwest::redirect::Policy::limited(3))
         .build()
     {
@@ -514,6 +513,7 @@ fn probe_https(host: &str, url: &str, timeout: Duration) -> ProbeOutcome {
     let client = match Client::builder()
         .timeout(timeout)
         .connect_timeout(timeout)
+        .dns_resolver(std::sync::Arc::new(crate::transport::TrustDnsResolver))
         .danger_accept_invalid_certs(true)
         .build()
     {
