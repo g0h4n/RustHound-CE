@@ -10,7 +10,7 @@ Every name lookup that feeds a socket connect now goes through the in-tree trust
 
 Verified on Ubuntu 22.04 (glibc 2.35) where the shipped static binary died on every run: rebuilt static with `-C target-feature=+crt-static`, `-i <fqdn>` now resolves to the DC IP, the SMB/GPO SYSVOL collection completes, `strace` records **zero** `libnss_*.so` opens, and the run exits `0` with no new kernel trap.
 
-`make build_linux_x86_64` additionally drops `-C target-feature=+crt-static` and ships a dynamic glibc binary as defence in depth, since a dependency can still resolve names itself (the `adws` crate connects to `-t adws` targets by name); `build_linux_musl` remains the fully static option. `--ldapip` help now mentions hostnames.
+`make build_linux_x86_64` additionally drops `-C target-feature=+crt-static` and ships a dynamic glibc binary as defence in depth, since a dependency can still resolve names itself (the `adws` crate connects to `-t adws` targets by name); the release workflow now builds the `Linux-gnu-x86_64` asset the same way, so downloaded binaries get the fix too, while Windows and macOS keep `+crt-static`. `build_linux_musl` remains the fully static option. `--ldapip` help now mentions hostnames.
 
 ## 2.5.52 - 2026-11-19
 

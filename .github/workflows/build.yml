@@ -162,8 +162,14 @@ jobs:
       - name: Build binary
         shell: bash
         run: |
+          # The x86_64 GNU asset is deliberately *dynamic*: a statically linked
+          # glibc binary aborts with SIGFPE (`div` by a zero `_dl_tls_static_align`
+          # inside `__libc_early_init`) as soon as NSS has to dlopen a module for a
+          # hostname lookup, which pulls libc.so.6 into the static process. Windows
+          # and macOS keep +crt-static, which does not go through NSS. Static Linux
+          # builds remain available through `make build_linux_musl`.
           RUSTFLAGS_VAL=""
-          if [[ "${{ matrix.platform.target }}" == "x86_64-unknown-linux-gnu" || "${{ runner.os }}" == "macOS" || "${{ matrix.platform.target }}" == "x86_64-pc-windows-msvc" ]]; then
+          if [[ "${{ runner.os }}" == "macOS" || "${{ matrix.platform.target }}" == "x86_64-pc-windows-msvc" ]]; then
             RUSTFLAGS_VAL="-C target-feature=+crt-static"
           fi
 
