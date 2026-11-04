@@ -12,6 +12,7 @@
   - [How to build documentation?](#how-to-build-documentation)
 - [Usage](#usage)
   - [Simple usage](#simple-usage)
+  - [Collection over ADWS (SOAP)](#collection-over-adws-soap)
   - [Pass-the-Certificate](#pass-the-certificate-certificate-authentication)
   - [Using disk instead of memory](#using-disk-instead-of-memory)
   - [Module FQDN resolver](#module-fqdn-resolver)
@@ -235,8 +236,10 @@ CERTIFICATE AUTHENTICATION:
       --key <key>            PEM private key for certificate authentication (use with --crt)
 
 OPTIONAL FLAGS:
+  -t, --transport <TRANSPORT>
+          Directory transport: ldap (default) or soap (ADWS over TCP 9389) [default: ldap]
   -c, --collectionmethod [<COLLECTIONMETHOD>]
-          Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroup (LDAP + SAMR BUILTIN alias membership), WebClient (LDAP + SMB WebDAV pipe probe for IsWebClientRunning), CARegistry (LDAP + MS-RRP winreg for the CA registry values IsUserSpecifiesSanEnabled and RoleSeparationEnabled) (default: All) [possible values: All, DCOnly, Session, RegistryOnly, LdapOnly, GPOLocalGroup, LocalGroup, WebClient, CARegistry]
+          Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroup (LDAP + SAMR BUILTIN alias membership), WebClient (LDAP + SMB WebDAV pipe probe for IsWebClientRunning), CARegistry (LDAP + MS-RRP winreg for the CA registry values IsUserSpecifiesSanEnabled and RoleSeparationEnabled) (default: All) [possible values: All, DCOnly, Session, RegistryOnly, LdapOnly, GPOLocalGroup, LocalGroup, WebClient, CARegistry, SOAPOnly]
       --ldap-filter <ldap-filter>
           Use custom ldap-filter default is : (objectClass=*)
       --ldaps
@@ -256,6 +259,7 @@ OPTIONAL FLAGS:
 
 OPTIONAL MODULES:
       --fqdn-resolver  Use fqdn-resolver module to get computers IP address
+
 ```
 
 ## Simple usage
@@ -293,6 +297,33 @@ export KRB5CCNAME="/tmp/jeor.mormont.ccache"
 rusthound-ce -d sevenkingdoms.local -f kingslanding -k -z
 # Kerberos authentication (Windows)
 rusthound-ce.exe -d sevenkingdoms.local -f kingslanding -k -z
+```
+
+## Collection over ADWS (SOAP)
+
+RustHound-CE can collect over Active Directory Web Services (ADWS, TCP 9389)
+instead of LDAP, selected with `-t soap` (alias `--transport soap`,
+case-insensitive). ADWS is often reachable when LDAP is filtered or closely
+monitored, and the traffic reads as legitimate admin tooling (the DC proxies it
+to its own local LDAP). It produces the exact same BloodHound-CE JSON as the
+LDAP path. NTLM only for now (password or pass-the-hash); Kerberos and
+certificate auth over ADWS are not wired yet.
+
+```bash
+# Collection over ADWS with username:password
+rusthound-ce -d essos.local -u 'daenerys.targaryen' -p 'BurnThemAll!' -t soap -o /tmp/demo -z
+
+# ADWS with NT hash (Pass-the-Hash, NTLM)
+rusthound-ce -d essos.local -u 'daenerys.targaryen' -H 34534854d33b398b66684072224bb47a -t soap -o /tmp/demo -z
+
+# --transport is case-insensitive (SOAP == soap) (ADWS == adws)
+rusthound-ce -d essos.local -u 'daenerys.targaryen' -p 'BurnThemAll!' --transport ADWS -o /tmp/demo -z
+
+# ADWS on a non-default port (e.g. through a tunnel/SOCKS): --ldapport sets the ADWS port
+rusthound-ce -d essos.local -u 'daenerys.targaryen' -p 'BurnThemAll!' -t soap -P 9389 -o /tmp/demo -z
+
+# SOAP-only collection (ADWS directory read, no SMB/RPC modules); requires -t soap
+rusthound-ce -d essos.local -u 'daenerys.targaryen' -p 'BurnThemAll!' -t soap -c SOAPOnly -o /tmp/demo -z
 ```
 
 ## Pass-the-Certificate (certificate authentication)

@@ -8,7 +8,7 @@
 
 <hr />
 
-RustHound-CE is a cross-platform and cross-compiled BloodHound collector tool written in Rust, making it compatible with Linux, Windows, and macOS. It therefore generates all the JSON files that can be analyzed by BloodHound Community Edition. This version is only compatible with [BloodHound Community Edition](https://github.com/SpecterOps/BloodHound). The version compatible with [BloodHound Legacy](https://github.com/BloodHoundAD/BloodHound) can be found on [NeverHack's github](https://github.com/NH-RED-TEAM/RustHound).
+RustHound-CE is a cross-platform and cross-compiled BloodHound collector tool written in Rust, making it compatible with Linux, Windows, and macOS. It collects over either LDAP(S) or ADWS (Active Directory Web Services), and generates all the JSON files that can be analyzed by BloodHound Community Edition. This version is only compatible with [BloodHound Community Edition](https://github.com/SpecterOps/BloodHound). The version compatible with [BloodHound Legacy](https://github.com/BloodHoundAD/BloodHound) can be found on [NeverHack's github](https://github.com/NH-RED-TEAM/RustHound).
 
 RustHound was created during my years as a pentester at Armature Technologies, renamed later Opencyber then NeverHack. I would like to thanks NeverHack for giving me time to research and develop the original RustHound project, which is still available on their github. We've decided to continue working together to contribute to both versions. This one will remain compatible with the community edition, and the NeverHack version with the Legacy version of BloodHound.
 

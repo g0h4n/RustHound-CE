@@ -3,6 +3,7 @@
 - [Limitations](#limitations)
     - [Compatibility with SharpHound](#compatibility-with-sharphound)
 - [Authentification](#authentification)
+- [Transport](#transport)
 - [Outputs](#outputs)
 - [Modules](#modules)
 - [Arguments](#arguments)
@@ -66,6 +67,16 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
   - [x] `Kerberos` :white_check_mark:
   - [x] `PFX`,`PEM` Pass-The-Certificate :white_check_mark:
   - [x] Prompt for password :white_check_mark:
+
+## Transport
+  - [x] LDAP / LDAPS (default) via [ldap3](https://crates.io/crates/ldap3) :white_check_mark:
+  - [x] ADWS / SOAP over TCP 9389 (`--transport soap`), via [adws](https://crates.io/crates/adws) 
+    - [x] `DirectoryTransport` trait abstracting the directory read (naming contexts + paged search with SD-flags) :white_check_mark:
+    - [x] LDAP implementation (existing behaviour behind the trait) :white_check_mark:
+    - [x] ADWS implementation (adws, `SearchEntry` => `LdapSearchEntry`) :white_check_mark:
+    - [x] Parity validation LDAP vs SOAP (object + ACE counts per NC) :white_check_mark:
+
+> `--transport soap` or `-t adws` moves only the directory collection onto ADWS (users, groups, computers, OUs, GPO objects, ACLs, AD CS). The RPC/SMB modules (Session, LocalGroup, SYSVOL GPO, WebClient, CARegistry) keep their own protocols, if you want you can only use ADWS (SOAP) with collection method named `-c SOAPOnly`.
 
 ## Outputs
   - [x] users.json :white_check_mark:
