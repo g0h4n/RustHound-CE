@@ -3,12 +3,16 @@
 //! [`ldap_auth`] connects and authenticates, returning a ready `Ldap` session.
 //! The full workflow is `api::run_collection`; collection itself is
 //! `collect_from_ldap_into`.
+//!
+//! [`LdapTransport`] wraps the session as a [`DirectoryTransport`], so the
+//! collection can run over LDAP or ADWS/SOAP behind the same trait.
 
 use crate::args::Options;
 use crate::banner::progress_bar;
-use crate::storage::Storage;
-use crate::utils::format::domain_to_dc;
+use crate::transport::DirectoryTransport;
+use crate::utils::format::{domain_to_dc, parse_hash};
 
+use async_trait::async_trait;
 use colored::Colorize;
 use indicatif::ProgressBar;
 use ldap3::adapters::{Adapter, EntriesOnly};
@@ -102,7 +106,7 @@ pub async fn ldap_auth(options: &Options) -> Result<ldap3::Ldap, Box<dyn Error>>
             .into());
         }
         info!(
-            "Connected to {} Active Directory via certificate as {}!",
+            "Connected to {} Active Directory via certificate as {} on LDAP!",
             domain.to_uppercase().bold().green(),
             who.bold().green()
         );
@@ -112,14 +116,14 @@ pub async fn ldap_auth(options: &Options) -> Result<ldap3::Ldap, Box<dyn Error>>
             .await?
             .success()
             .map_err(|e| format!("NTLM authentication to {} failed: {e}", domain.to_uppercase()))?;
-        info!("Connected to {} Active Directory via NTLM!", domain.to_uppercase().bold().green());
+        info!("Connected to {} Active Directory via NTLM on LDAP!", domain.to_uppercase().bold().green());
     } else if !options.kerberos {
         debug!("Simple bind (username:password)");
         ldap.simple_bind(&ldap_args.s_username, &ldap_args.s_password)
             .await?
             .success()
             .map_err(|e| format!("authentication to {} failed: {e}", domain.to_uppercase()))?;
-        info!("Connected to {} Active Directory!", domain.to_uppercase().bold().green());
+        info!("Connected to {} Active Directory on LDAP!", domain.to_uppercase().bold().green());
     } else {
         debug!("Kerberos (sasl_gssapi_bind)");
         let fqdn = options
@@ -141,85 +145,100 @@ pub async fn ldap_auth(options: &Options) -> Result<ldap3::Ldap, Box<dyn Error>>
     Ok(ldap)
 }
 
-/// Collect every namingContext into `storage` and return the object count.
-/// Each context is walked with the SD-flags and show-deleted controls and
-/// streamed into `storage`. The caller owns the session.
-pub(crate) async fn collect_from_ldap_into<S: Storage<LdapSearchEntry>>(
+/// Walk a single namingContext `cn` with the SD-flags and show-deleted controls,
+/// completing ranged attributes, and hand each entry to `sink`. Returns the
+/// number of entries streamed. Shared by `collect_from_ldap_into` and by the
+/// `DirectoryTransport` impl (hence the `?Sized` sink, which accepts both a
+/// concrete closure and a `&mut dyn FnMut`).
+async fn collect_context_into<F>(
     ldap: &mut ldap3::Ldap,
+    cn: &str,
     ldapfilter: &str,
-    storage: &mut S,
-) -> Result<usize, Box<dyn Error>> {
+    sink: &mut F,
+) -> Result<usize, Box<dyn Error>>
+where
+    F: FnMut(LdapSearchEntry) -> Result<(), Box<dyn Error>> + ?Sized,
+{
+    // Control 1: LDAP_SERVER_SD_FLAGS_OID to get nTSecurityDescriptor.
+    let sd_flags = RawControl {
+        ctype: String::from("1.2.840.113556.1.4.801"),
+        crit: true,
+        val: Some(vec![48, 3, 2, 1, 5]), // SEQUENCE { INTEGER 5 }
+    };
+    // Control 2: LDAP_SERVER_SHOW_DELETED_OID.
+    let show_deleted = RawControl {
+        ctype: String::from("1.2.840.113556.1.4.417"),
+        crit: false,
+        val: None,
+    };
+    ldap.with_controls(vec![sd_flags, show_deleted]);
+
+    info!("Ldap filter : {}", ldapfilter.bold().green());
+
+    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+        Box::new(EntriesOnly::new()),
+        Box::new(PagedResults::new(999)),
+    ];
+
+    let mut search = ldap
+        .streaming_search_with(
+            adapters,
+            cn,
+            Scope::Subtree,
+            ldapfilter,
+            vec!["*", "nTSecurityDescriptor", "msDS-User-Account-Control-Computed"],
+        )
+        .await?;
+
+    // Ranged-retrieval side channel (#76): a cloned `Ldap` handle multiplexes
+    // the follow-up queries over the same connection while the main stream is
+    // consumed. The controls above were already taken by the search
+    let mut ranged_ldap = ldap.clone();
+
+    let pb = ProgressBar::new(1);
+    let mut count = 0;
     let mut total = 0usize;
+    while let Some(entry) = search.next().await? {
+        let mut entry = SearchEntry::construct(entry);
+        complete_ranged_attributes(&mut ranged_ldap, &mut entry).await?;
+        total += 1;
+        count += 1;
+        progress_bar(
+            pb.to_owned(),
+            "LDAP objects retrieved".to_string(),
+            count,
+            "#".to_string(),
+        );
+        sink(entry.into())?;
+    }
+    pb.finish_and_clear();
 
-    let res = get_all_naming_contexts(ldap).await?;
-    trace!("naming_contexts: {:?}", &res);
-
-    if !res.iter().any(|s| s.contains("Configuration")) {
-        return Err("no Configuration namingContext found (is the target a Domain Controller?)".into());
+    match search.finish().await.success() {
+        Ok(_) => info!("All data collected for NamingContext {}", &cn.bold()),
+        Err(err) => error!("No data collected on {}! Reason: {err}", &cn.bold().red()),
     }
 
-    for cn in &res {
-        // Control 1: LDAP_SERVER_SD_FLAGS_OID to get nTSecurityDescriptor.
-        let sd_flags = RawControl {
-            ctype: String::from("1.2.840.113556.1.4.801"),
-            crit: true,
-            val: Some(vec![48, 3, 2, 1, 5]), // SEQUENCE { INTEGER 5 }
-        };
-        // Control 2: LDAP_SERVER_SHOW_DELETED_OID.
-        let show_deleted = RawControl {
-            ctype: String::from("1.2.840.113556.1.4.417"),
-            crit: false,
-            val: None,
-        };
-        ldap.with_controls(vec![sd_flags, show_deleted]);
-
-        info!("Ldap filter : {}", ldapfilter.bold().green());
-
-        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-            Box::new(EntriesOnly::new()),
-            Box::new(PagedResults::new(999)),
-        ];
-
-        let mut search = ldap
-            .streaming_search_with(
-                adapters,
-                cn,
-                Scope::Subtree,
-                ldapfilter,
-                vec!["*", "nTSecurityDescriptor", "msDS-User-Account-Control-Computed"],
-            )
-            .await?;
-
-        // Ranged-retrieval side channel (#76): a cloned `Ldap` handle multiplexes
-        // the follow-up queries over the same connection while the main stream is
-        // consumed. The controls above were already taken by the search
-        let mut ranged_ldap = ldap.clone();
-
-        let pb = ProgressBar::new(1);
-        let mut count = 0;
-        while let Some(entry) = search.next().await? {
-            let mut entry = SearchEntry::construct(entry);
-            complete_ranged_attributes(&mut ranged_ldap, &mut entry).await?;
-            total += 1;
-            count += 1;
-            progress_bar(
-                pb.to_owned(),
-                "LDAP objects retrieved".to_string(),
-                count,
-                "#".to_string(),
-            );
-            storage.add(entry.into())?;
-        }
-        pb.finish_and_clear();
-
-        match search.finish().await.success() {
-            Ok(_) => info!("All data collected for NamingContext {}", &cn.bold()),
-            Err(err) => error!("No data collected on {}! Reason: {err}", &cn.bold().red()),
-        }
-    }
-
-    storage.flush()?;
     Ok(total)
+}
+
+/// LDAP(S) implementation of [`DirectoryTransport`] (the existing behaviour,
+/// behind the trait). Wraps an authenticated `ldap3::Ldap` session.
+pub struct LdapTransport(pub ldap3::Ldap);
+
+#[async_trait]
+impl DirectoryTransport for LdapTransport {
+    async fn naming_contexts(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
+        get_all_naming_contexts(&mut self.0).await
+    }
+
+    async fn collect_context(
+        &mut self,
+        cn: &str,
+        filter: &str,
+        sink: &mut (dyn FnMut(LdapSearchEntry) -> Result<(), Box<dyn Error>> + Send),
+    ) -> Result<usize, Box<dyn Error>> {
+        collect_context_into(&mut self.0, cn, filter, sink).await
+    }
 }
 
 /// Complete attributes truncated by AD ranged retrieval, then re-key the values
@@ -380,20 +399,19 @@ fn ldap_constructor(
         _s_username = format!("{}\\{}", domain_upper, _s_username);
     }
 
-    // Validate and build NTLM password from NT hash if provided
-    let s_ntlm_password = match hashes {
-        Some(hash) => {
-            let clean = hash.trim();
-            let nt = match clean.split_once(':') {
-                Some((_lm, nt)) => nt,
-                None => clean,
-            };
-            if nt.len() != 32 || !nt.chars().all(|c| c.is_ascii_hexdigit()) {
-                return Err("Invalid NT hash: must be exactly 32 hex characters (e.g. aad3b435b51404eeaad3b435b51404ee)".into());
+    // Validate and build NTLM password from NT hash if provided.
+    // parse_hash returns None for both absent and malformed; use_ntlm already
+    // distinguishes them, so a present-but-malformed hash is a hard error.
+    let s_ntlm_password = if use_ntlm {
+        match parse_hash(hashes) {
+            Some(nt) => Some(nt_hash_to_ntlm_password(&nt)),
+            None => {
+                error!("Invalid NT hash: expected 'LMHASH:NTHASH', ':NTHASH' or a bare 32-hex NT hash");
+                return Err("invalid NT hash".into());
             }
-            Some(nt_hash_to_ntlm_password(nt))
         }
-        None => None,
+    } else {
+        None
     };
 
     // Password prompt (skip for NTLM hash, Kerberos, and certificate auth)
@@ -436,9 +454,9 @@ fn ldap_constructor(
 
 /// Encode an NT hash into a password string that triggers pass-the-hash
 /// in the sspi crate's NTLM implementation.
-fn nt_hash_to_ntlm_password(hex_hash: &str) -> String {
-    let upper = hex_hash.to_uppercase();
-    let bytes = upper.as_bytes();
+fn nt_hash_to_ntlm_password(nt: &[u8; 16]) -> String {
+    let hex: String = nt.iter().map(|b| format!("{b:02X}")).collect();
+    let bytes = hex.as_bytes();
     let mut password = String::new();
     for pair in bytes.chunks(2) {
         let low_byte = pair[0] as u32;
@@ -577,19 +595,19 @@ mod tests {
 
     #[test]
     fn nt_hash_encoding_roundtrip() {
-        let hash = "aad3b435b51404eeaad3b435b51404ee";
-        let password = nt_hash_to_ntlm_password(hash);
+        let nt = parse_hash(Some("aad3b435b51404eeaad3b435b51404ee")).unwrap();
+        let password = nt_hash_to_ntlm_password(&nt);
         let utf16_bytes: Vec<u8> = password.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         assert!(utf16_bytes.len() > 512);
         let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
         assert_eq!(hash_portion.len(), 32);
-        assert_eq!(hash_portion, hash.to_uppercase().as_bytes());
+        assert_eq!(hash_portion, b"AAD3B435B51404EEAAD3B435B51404EE");
     }
 
     #[test]
     fn nt_hash_encoding_all_zeros() {
-        let hash = "00000000000000000000000000000000";
-        let password = nt_hash_to_ntlm_password(hash);
+        let nt = parse_hash(Some("00000000000000000000000000000000")).unwrap();
+        let password = nt_hash_to_ntlm_password(&nt);
         let utf16_bytes: Vec<u8> = password.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         assert!(utf16_bytes.len() > 512);
         let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
@@ -598,8 +616,8 @@ mod tests {
 
     #[test]
     fn nt_hash_encoding_all_f() {
-        let hash = "ffffffffffffffffffffffffffffffff";
-        let password = nt_hash_to_ntlm_password(hash);
+        let nt = parse_hash(Some("ffffffffffffffffffffffffffffffff")).unwrap();
+        let password = nt_hash_to_ntlm_password(&nt);
         let utf16_bytes: Vec<u8> = password.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         assert!(utf16_bytes.len() > 512);
         let hash_portion = &utf16_bytes[..utf16_bytes.len() - 512];
