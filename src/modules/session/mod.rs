@@ -45,6 +45,7 @@ use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_identi
 use crate::modules::registry::{rrp_bind_unavailable, RRP_NEEDS_SECRET};
 
 use crate::args::{CollectionMethod, Options};
+use crate::utils::format::parse_hash;
 use crate::objects::common::{Session, UserComputerSession};
 use crate::objects::computer::Computer;
 use crate::objects::user::User;
@@ -514,23 +515,6 @@ fn set_status<T>(s: &mut Session, call: &Call<T>) {
 /// reads it, but there's no password or NT hash to bind with.
 fn registry_skip(method: &CollectionMethod, password: &str, nt_hash: Option<&[u8; 16]>) -> Option<&'static str> {
     (method.registry() && rrp_bind_unavailable(password, nt_hash)).then_some(RRP_NEEDS_SECRET)
-}
-
-/// Parse a hash string into the 16-byte NT hash for pass-the-hash.
-///
-/// Accepts "LMHASH:NTHASH", ":NTHASH" or a bare 32-hex "NTHASH". Returns None
-/// when absent or malformed (caller then falls back to password auth).
-fn parse_hash(h: Option<&str>) -> Option<[u8; 16]> {
-    let raw = h?.trim();
-    let nt = raw.rsplit(':').next().unwrap_or(raw).trim();
-    if nt.len() != 32 || !nt.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    let mut out = [0u8; 16];
-    for (i, byte) in out.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&nt[i * 2..i * 2 + 2], 16).ok()?;
-    }
-    Some(out)
 }
 
 #[cfg(test)]

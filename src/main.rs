@@ -4,14 +4,14 @@ pub mod banner;
 // process heap in particular) serializes concurrent allocations behind a lock,
 // which throttled every parallel phase — decode, parse, and the checker all
 // allocate heavily, so threads spent their time contending instead of working.
-// mimalloc uses per-thread heaps and removes that bottleneck.pub mod banner;
+// mimalloc uses per-thread heaps and removes that bottleneck.
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use env_logger::Builder;
 use log::{error, info, trace};
 
-use rusthound_ce::{args, ldap_auth, api::run_collection, utils};
+use rusthound_ce::{args, api::run_collection, transport::connect, utils};
 use std::error::Error;
 
 #[cfg(feature = "noargs")]
@@ -42,19 +42,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!("Verbosity level: {:?}", common_args.verbose);
     info!("Collection method: {:?}", common_args.collection_method);
 
-    // 1) Authenticate to the Domain Controller.
-    let mut ldap = ldap_auth(&common_args).await?;
+    // 1) Resume reads straight from the local cache, so no DC connection is
+    //    needed. Otherwise connect + authenticate over the selected transport
+    //    (LDAP by default, ADWS/SOAP with --transport soap). The session closes
+    //    when `transport` is dropped at the end of the branch.
+    let result = if common_args.resume {
+        run_collection(None, &common_args).await
+    } else {
+        let mut transport = connect(&common_args).await?;
+        run_collection(Some(transport.as_mut()), &common_args).await
+    };
 
-    // 2) Run the full workflow (collect -> parse -> modules -> JSON/zip).
-    match run_collection(&mut ldap, &common_args).await {
-        Ok(out) => trace!("Output written to {out}"),
+    // 2) Report the outcome of the full workflow (collect -> parse -> modules -> JSON/zip).
+    match result {
+        Ok(out) => {
+            trace!("Output written to {out}");
+            // End banner
+            print_end_banner();
+        },
         Err(err) => error!("Collection failed. Reason: {err}"),
     }
 
-    // Close the session.
-    let _ = ldap.unbind().await;
-
-    // End banner
-    print_end_banner();
     Ok(())
 }
