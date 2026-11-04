@@ -29,7 +29,8 @@ use crate::{
         user::User,
         schema::Schema,
     },
-    transport::ldap::{LdapSearchEntry, collect_from_ldap_into},
+    transport::{DirectoryTransport, collect_into},
+    transport::ldap::LdapSearchEntry,
     storage::{DiskStorageReader, DiskStorage, EntrySource},
     modules::run_modules,
     json::maker::make_result,
@@ -342,7 +343,7 @@ fn update_progress(count: &mut usize, total: Option<usize>, pb: &ProgressBar) ->
         let percentage = 100 * *count / total;
         progress_bar(
             pb.to_owned(),
-            "Parsing LDAP objects".to_string(),
+            "Parsing Active Directory objects".to_string(),
             percentage.try_into()?,
             "%".to_string(),
         );
@@ -375,7 +376,7 @@ pub fn parse_result_type_from_source(
     let total = total_objects;
     let mut domain_sid: String = "DOMAIN_SID".to_owned();
 
-    log::info!("Starting the LDAP objects parsing...");
+    log::info!("Starting the Active Directory objects parsing...");
 
     let mut buffer: Vec<SearchEntry> = Vec::with_capacity(PARSE_BATCH);
 
@@ -388,7 +389,7 @@ pub fn parse_result_type_from_source(
     parse_batch(&mut buffer, &mut results, domain, &domain_sid, &mut count, total, &pb)?;
 
     pb.finish_and_clear();
-    log::info!("Parsing LDAP objects finished!");
+    log::info!("Parsing Active Directory objects finished!");
     Ok(results)
 }
 
@@ -467,7 +468,7 @@ pub fn parse_result_type_from_disk(
     let total = total_objects;
     let mut domain_sid: String = "DOMAIN_SID".to_owned();
 
-    log::info!("Starting the LDAP objects parsing...");
+    log::info!("Starting the Active Directory objects parsing...");
 
     let mut raw_buf: Vec<Vec<u8>> = Vec::with_capacity(PARSE_BATCH);
     let mut buffer: Vec<SearchEntry> = Vec::with_capacity(PARSE_BATCH);
@@ -490,7 +491,7 @@ pub fn parse_result_type_from_disk(
     parse_batch(&mut buffer, &mut results, domain, &domain_sid, &mut count, total, &pb)?;
 
     pb.finish_and_clear();
-    log::info!("Parsing LDAP objects finished!");
+    log::info!("Parsing Active Directory objects finished!");
     Ok(results)
 }
 
@@ -545,23 +546,26 @@ fn cache_path(domain: &str) -> PathBuf {
 ///
 /// Never calls `process::exit`; never unbinds/drops the session.
 pub async fn run_collection(
-    ldap: &mut ldap3::Ldap,
+    transport: Option<&mut dyn DirectoryTransport>,
     options: &Options,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut results = if options.resume {
+        log::info!("Resuming from local cache file...");
         let reader = DiskStorageReader::from_path(cache_path(&options.domain))?;
         prepare_results_from_disk(reader, options, None).await?
     } else if options.cache {
+        let transport = transport.ok_or("collection requires an authenticated transport")?;
         let path = cache_path(&options.domain);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let mut writer = DiskStorage::new_with_capacity(path, options.cache_buffer_size)?;
-        let total = collect_from_ldap_into(ldap, &options.ldap_filter, &mut writer).await?;
+        let total = collect_into(transport, &options.ldap_filter, &mut writer).await?;
         prepare_results_from_disk(writer.into_reader()?, options, Some(total)).await?
     } else {
+        let transport = transport.ok_or("collection requires an authenticated transport")?;
         let mut entries = Vec::new();
-        let total = collect_from_ldap_into(ldap, &options.ldap_filter, &mut entries).await?;
+        let total = collect_into(transport, &options.ldap_filter, &mut entries).await?;
         prepare_results_from_source(entries, options, Some(total)).await?
     };
 

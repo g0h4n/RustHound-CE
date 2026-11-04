@@ -59,6 +59,7 @@ pub async fn run_modules(
     // worker thread itself (e.g. with a single CA), which was the crash.
     if !matches!(common_args.collection_method, CollectionMethod::DCOnly)
         && !matches!(common_args.collection_method, CollectionMethod::LdapOnly)
+        && !matches!(common_args.collection_method, CollectionMethod::SOAPOnly)
         && !ad.enterprisecas.is_empty()
     {
         log::info!(

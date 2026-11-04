@@ -74,6 +74,8 @@ extern crate regex;
 pub use transport::ldap::ldap_auth;
 #[doc(inline)]
 pub use ldap3::SearchEntry;
+#[doc(inline)]
+pub use transport::connect;
 
 pub use json::maker::make_result;
 pub use api::{prepare_results_from_source, prepare_results_from_disk};

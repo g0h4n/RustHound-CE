@@ -21,6 +21,7 @@ pub struct Options {
     pub path: String,
     pub collection_method: CollectionMethod,
     pub ldaps: bool,
+    pub transport: Transport,
     pub dns_tcp: bool,
     pub fqdn_resolver: bool,
     pub hashes: Option<String>,
@@ -49,15 +50,16 @@ impl Options {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CollectionMethod {
-    All,            // LDAP + Session (all three RPC paths) + SMB on SYSVOL + LocalGroup 
-    DCOnly,         // LDAP only, never contacts a machine + SMB on SYSVOL
-    Session,        // LDAP + SRVSVC + WKSSVC + WINREG 
-    RegistryOnly,   // LDAP + WINREG
+    All,            // LDAP|ADWS(SOAP) + Session (all three RPC paths) + SMB on SYSVOL + LocalGroup 
+    DCOnly,         // LDAP|ADWS(SOAP) only, never contacts a machine + SMB on SYSVOL
+    Session,        // LDAP|ADWS(SOAP) + SRVSVC + WKSSVC + WINREG 
+    RegistryOnly,   // LDAP|ADWS(SOAP) + WINREG
     LdapOnly,       // LDAP
-    GPOLocalGroup,  // LDAP + GPOLocalGroup with SMB on SYSVOL
-    LocalGroup,     // LDAP + RPC SAMR
-    WebClient,      // LDAP + SMB WebDAV pipe probe (IsWebClientRunning)
-    CARegistry      // LDAP + MS-RRP \winreg CA registry values (CARegistryData)
+    GPOLocalGroup,  // LDAP|ADWS(SOAP) + GPOLocalGroup with SMB on SYSVOL
+    LocalGroup,     // LDAP|ADWS(SOAP) + RPC SAMR
+    WebClient,      // LDAP|ADWS(SOAP) + SMB WebDAV pipe probe (IsWebClientRunning)
+    CARegistry,     // LDAP|ADWS(SOAP) + MS-RRP \winreg CA registry values (CARegistryData)
+    SOAPOnly,       // ADWS(SOAP)
 }
 
 impl CollectionMethod {
@@ -69,6 +71,12 @@ impl CollectionMethod {
     pub fn does_local_group(&self)  -> bool { matches!(self, Self::All | Self::LocalGroup) }
     pub fn does_web_client(&self)   -> bool { matches!(self, Self::All | Self::WebClient) }
     pub fn does_ca_registry(&self)  -> bool { matches!(self, Self::All | Self::CARegistry) }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Transport {
+    Ldap,
+    Soap,
 }
 
 // Current RustHound version
@@ -176,12 +184,21 @@ fn cli() -> Command {
         .value_parser(value_parser!(String))
     )
     .next_help_heading("OPTIONAL FLAGS")
+    .arg(Arg::new("transport")
+        .short('t')
+        .long("transport")
+        .help("Directory transport: ldap (default) or adws|soap (ADWS over TCP 9389)")
+        .required(false)
+        .value_name("TRANSPORT")
+        .num_args(1)
+        .default_value("ldap")
+    )
     .arg(Arg::new("collectionmethod")
         .short('c')
         .long("collectionmethod")
-        .help("Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroup (LDAP + SAMR BUILTIN alias membership), WebClient (LDAP + SMB WebDAV pipe probe for IsWebClientRunning), CARegistry (LDAP + MS-RRP winreg for the CA registry values IsUserSpecifiesSanEnabled and RoleSeparationEnabled) (default: All)")
+        .help("Which information to collect. Supported: All (LDAP, SMB, HTTP), DCOnly (LDAP + SYSVOL, no member-machine connections), Session (user sessions over RPC), RegistryOnly (sessions over WINREG), LdapOnly (LDAP only, no machine or SYSVOL), GPOLocalGroup (LDAP + SMB SYSVOL for read local group member over GPO), LocalGroup (LDAP + SAMR BUILTIN alias membership), WebClient (LDAP + SMB WebDAV pipe probe for IsWebClientRunning), CARegistry (LDAP + MS-RRP winreg for the CA registry values IsUserSpecifiesSanEnabled and RoleSeparationEnabled), SOAPOnly|ADWSOnly to only use Active Directory Web Services protocol (default: All)")
         .value_name("COLLECTIONMETHOD")
-        .value_parser(["All", "DCOnly", "Session", "RegistryOnly", "LdapOnly", "GPOLocalGroup", "LocalGroup", "WebClient", "CARegistry"])
+        .value_parser(["All", "DCOnly", "Session", "RegistryOnly", "LdapOnly", "GPOLocalGroup", "LocalGroup", "WebClient", "CARegistry", "SOAPOnly", "ADWSOnly"])
         .num_args(0..=1)
         .default_missing_value("All")
     )
@@ -306,13 +323,11 @@ pub fn extract_args() -> Options {
         .get_one::<bool>("kerberos")
         .map(|s| s.to_owned())
         .unwrap_or(false);
-
     // Certificate authentication paths
     let pfx = matches.get_one::<String>("pfx").cloned();
     let pfx_pass = matches.get_one::<String>("pfx-pass").cloned();
     let crt = matches.get_one::<String>("crt").cloned();
     let key = matches.get_one::<String>("key").cloned();
-
     let v = match matches.get_count("v") {
         0 => log::LevelFilter::Info,
         1 => log::LevelFilter::Debug,
@@ -332,10 +347,24 @@ pub fn extract_args() -> Options {
         "LocalGroup"    => CollectionMethod::LocalGroup,
         "WebClient"     => CollectionMethod::WebClient,
         "CARegistry"    => CollectionMethod::CARegistry,
+        "SOAPOnly"      => CollectionMethod::SOAPOnly,
+        "ADWSOnly"      => CollectionMethod::SOAPOnly,
         _               => CollectionMethod::All,
     };
+    let transport = match matches
+        .get_one::<String>("transport")
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("soap") | Some("adws") => Transport::Soap,
+        _ => Transport::Ldap,
+    };
+    // SOAPOnly only makes sense over the ADWS/SOAP transport
+    if collection_method == CollectionMethod::SOAPOnly && transport != Transport::Soap {
+        eprintln!("-c SOAPOnly or -c ADWSOnly requires --transport soap or -t adws");
+        std::process::exit(1);
+    }
     let ldap_filter = matches.get_one::<String>("ldap-filter").map(|s| s.as_str()).unwrap_or("(objectClass=*)");
-
     let cache = matches.get_flag("cache");
     let cache_buffer_size = matches
         .get_one::<usize>("cache_buffer")
@@ -355,6 +384,7 @@ pub fn extract_args() -> Options {
         name_server: n.to_string(),
         path: path.to_string(),
         collection_method,
+        transport,
         ldaps,
         dns_tcp,
         fqdn_resolver,
@@ -421,6 +451,7 @@ pub fn auto_args() -> Options {
         name_server: "127.0.0.1".to_string(),
         path: "./output".to_string(),
         collection_method: CollectionMethod::All,
+        transport: Transport::Ldap,
         ldaps: ldaps,
         dns_tcp: false,
         fqdn_resolver: false,

@@ -14,6 +14,7 @@ rust-version = "1.85"
 
 [dependencies]
 tokio = { version = "1.42.0", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+async-trait = "0.1"
 clap = "4.5.23"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
@@ -29,7 +30,6 @@ x509-parser = "0.16"
 trust-dns-resolver = "0.23"
 zip = { version = "4.2.0", default-features = false, features = ["deflate"] }
 rpassword = "7.2"
-ldap3 = { version = "0.12.1", default-features = false }
 picky-krb = "=0.11.1"
 picky = "=7.0.0-rc.17"
 winreg = { version = "0.52", optional = true }
@@ -42,6 +42,9 @@ bincode = "2.0.1"
 obfstr = "0.4.1"
 rayon = "1.10"
 mimalloc = "0.1"
+# Transport Active Directory
+ldap3 = { version = "0.12.1", default-features = false }
+adws_rs = { package = "adws", version = "0.1.1", features = ["ldap3", "sspi-auth"] }
 # HasSession and GPOChanges
 futures     = "0.3" 
 anyhow      = "1"
