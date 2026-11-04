@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.5.40 - 2026-11-04
+
+### Added
+
+- Initial Active Directory Web Services (ADWS) transport support over SOAP (TCP 9389), providing an alternative to LDAP/LDAPS for Active Directory collection.
+- CLI transport selection to switch between LDAP/LDAPS and ADWS with `-t ldap|(soap|adws)`.
+- Integration with the [`adws` Rust crate](https://crates.io/crates/adws) for SOAP-based directory enumeration.
+
+### Changed
+
+- Refactored the transport layer to support multiple directory communication backends.
+- Updated LDAP transport handling to share common collection logic with ADWS.
+- Integrated transport selection into the CLI, API and collection workflow.
+- Updated authentication and connection initialization for transport-specific configuration.
+- Updated dependencies and documentation (`README.md`, `HELP.md`, `ROADMAP.md`).
+
 ## 2.5.30 - 2026-10-29
 
 ### Fixed
