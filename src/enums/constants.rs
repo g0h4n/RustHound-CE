@@ -31,3 +31,5 @@ pub const PKI_NAME_FLAG: &str = "ea1dddc4-60ff-416e-8cc0-17cee534bce7";
 pub const PKI_ENROLLMENT_FLAG: &str = "d15ef7d8-f226-46db-ae79-b34e560bd12c";
 pub const ENROLL: &str = "0e10c968-78fb-11d2-90d4-00c04f79dc55";
 pub const AUTO_ENROLL: &str = "a05b8cc2-17bc-4802-a710-e7c15ab866a2";
+// Container
+pub const CONFIG_LOCATION: &str = "CN=CONFIGURATION";

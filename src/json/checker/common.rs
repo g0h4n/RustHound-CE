@@ -7,6 +7,7 @@ use rayon::prelude::*;
 use regex::Regex;
 use crate::enums::ldaptype::*;
 use crate::objects::common::Link;
+use crate::objects::siteserver::SiteServer;
 use crate::objects::{
     user::User,
     computer::Computer,
@@ -1027,6 +1028,65 @@ fn get_contained_by_name_from_distinguishedname(cn_name: &str, dn_object: &str) 
     let dn_contained_by = vec[1].to_owned();
     // dn_contained_by = CN=USERS,DC=ESSOS,DC=LOCAL
     dn_contained_by
+}
+
+/// This function replaces ContainedBy DN with its identifier and type.
+pub fn replace_contained_by_dn_and_type<T: LdapObject + Send>(
+    vec_replaced: &mut [T],
+    dn_sid: &HashMap<String, String>,
+    sid_type: &HashMap<String, String>,
+) -> Result<(), Box<dyn Error>> {
+    // Each object is independent and the maps are read-only here.
+    vec_replaced.par_iter_mut().for_each(|object| {
+        // Get the current ContainedBy value
+        let Some(contained_by) = object.get_contained_by().as_ref() else {
+            return;
+        };
+
+        // Resolve DN to object identifier
+        let dn = contained_by.object_identifier().to_uppercase();
+        let Some(identifier) = dn_sid.get(&dn) else {
+            return;
+        };
+
+        // Resolve object type
+        let Some(object_type) = sid_type.get(identifier) else {
+            return;
+        };
+
+        // Create and replace ContainedBy
+        let mut resolved = Member::new();
+        *resolved.object_identifier_mut() = identifier.to_string();
+        *resolved.object_type_mut() = object_type.to_string();
+
+        object.set_contained_by(Some(resolved));
+    });
+
+    Ok(())
+}
+
+/// This function resolves ServerIs for SiteServer objects.
+pub fn add_server_is_for(
+    vec_siteservers: &mut [SiteServer],
+    dn_sid: &HashMap<String, String>,
+) -> Result<(), Box<dyn Error>> {
+    // Each object is independent and the map is read-only here.
+    vec_siteservers.par_iter_mut().for_each(|object| {
+        // Get the server reference DN
+        let server_reference = object.get_server_reference().to_uppercase();
+
+        // Resolve DN to Computer SID
+        if let Some(identifier) = dn_sid.get(&server_reference) {
+            // Create and set ServerIs
+            let mut server_is = Member::new();
+            *server_is.object_identifier_mut() = identifier.to_string();
+            *server_is.object_type_mut() = "Computer".to_string();
+
+            object.set_server_is(Some(server_is));
+        }
+    });
+
+    Ok(())
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

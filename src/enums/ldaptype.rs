@@ -19,6 +19,9 @@ pub enum Type {
     CertTemplate,
     IssuancePolicie,
     Schema,
+    Site,
+    SiteServer,
+    SiteSubnet,
     Unknown
 }
 
@@ -65,8 +68,12 @@ pub fn get_type(result: &SearchEntry) -> std::result::Result<Type, Type> {
                 && contains(vals, "foreignSecurityPrincipal") => {
                 return Ok(Type::ForeignSecurityPrincipal);
             }
-            _ if contains(vals, "top") && contains(vals, "container")
-                && !contains(vals, "groupPolicyContainer") => {
+            _ if (contains(vals, "top") && contains(vals, "container")
+                && !contains(vals, "groupPolicyContainer")) 
+                || (contains(vals, "top") && contains(vals, "sitesContainer")
+                && !contains(vals, "groupPolicyContainer"))
+                || (contains(vals, "top") && contains(vals, "configuration")
+                && !contains(vals, "groupPolicyContainer")) => {
                 return Ok(Type::Container);
             }
             _ if contains(vals, "trustedDomain") => {
@@ -103,6 +110,15 @@ pub fn get_type(result: &SearchEntry) -> std::result::Result<Type, Type> {
             _ if contains(vals, "attributeSchema") 
                 || contains(vals, "classSchema") => {
                 return Ok(Type::Schema);
+            }
+            _ if contains(vals, "site") => {
+                return Ok(Type::Site);
+            }
+            _ if contains(vals, "server") => {
+                return Ok(Type::SiteServer);
+            }
+            _ if contains(vals, "subnet") => {
+                return Ok(Type::SiteSubnet);
             }
             _ => {}
         }
