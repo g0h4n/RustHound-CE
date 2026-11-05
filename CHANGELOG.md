@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.5.50 - 2026-11-05
+
+### Added
+- Added Active Directory `Site`, `SiteServer`, and `SiteSubnet` collection support.
+- Added `sites.json`, `siteservers.json`, and `sitesubnets.json` outputs for BloodHound Community Edition.
+- Added support for collecting site topology objects over LDAP(S) and ADWS.
+- Added `ContainedBy` relationship resolution for site topology objects.
+- Added `ServerIs` relationship resolution between `SiteServer` and `Computer` objects.
+
+### Fixed
+- Fixed ADWS authentication to prompt for a password when none is provided through the command-line arguments.
+- Improved Active Directory Configuration naming context object classification and relationship resolution.
+
+### Changed
+- Updated `ROADMAP.md` with the new site topology object coverage and SharpHound v2.17.1.0 compatibility results.
+
 ## 2.5.40 - 2026-11-04
 
 ### Added
