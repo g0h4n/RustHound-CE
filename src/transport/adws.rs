@@ -86,10 +86,10 @@ pub async fn adws_auth(options: &Options) -> Result<AdwsTransport, Box<dyn Error
         debug!("ADWS auth: NTLM pass-the-hash as {nt_domain}\\{username}");
         Credentials::NtHash { domain: nt_domain, username, nt_hash }
     } else {
-        let password = options
-            .password
-            .clone()
-            .ok_or("ADWS requires a password (-p) or an NT hash (--hashes)")?;
+        let password = match &options.password {
+            Some(p) => p.to_owned(),
+            None => rpassword::prompt_password("Password: ").unwrap_or("not set".to_string()),
+        };
         debug!("ADWS auth: NTLM password as {nt_domain}\\{username}");
         Credentials::Password { domain: nt_domain, username, password }
     };
