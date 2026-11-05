@@ -8,6 +8,7 @@ use std::error::Error;
 use crate::objects::common::{LdapObject, AceTemplate, SPNTarget, Link, Member};
 use crate::enums::acl::parse_ntsecuritydescriptor;
 use crate::enums::sid::decode_guid_le;
+use crate::enums::constants::CONFIG_LOCATION;
 use crate::utils::date::string_to_epoch;
 
 
@@ -121,10 +122,17 @@ impl Container {
             self.object_identifier.to_string()
         );
         // Push DN and Type
-        sid_type.insert(
-            self.object_identifier.to_string(),
-            "Container".to_string(),
-        );
+        if self.properties.distinguishedname.to_string().starts_with(CONFIG_LOCATION) {
+            sid_type.insert(
+                self.object_identifier.to_string(),
+                "Configuration".to_string(),
+            );
+        } else {
+            sid_type.insert(
+                self.object_identifier.to_string(),
+                "Container".to_string(),
+            );
+        };
 
         // Trace and return Contaier struct
         // trace!("JSON OUTPUT: {:?}",serde_json::to_string(&self).unwrap());

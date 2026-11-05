@@ -28,6 +28,9 @@ use crate::{
         trust::Trust,
         user::User,
         schema::Schema,
+        site::Site,
+        siteserver::SiteServer,
+        sitesubnet::SiteSubnet,
     },
     transport::{DirectoryTransport, collect_into},
     transport::ldap::LdapSearchEntry,
@@ -53,6 +56,9 @@ pub struct ADResults {
     pub enterprisecas: Vec<EnterpriseCA>,
     pub certtemplates: Vec<CertTemplate>,
     pub issuancepolicies: Vec<IssuancePolicie>,
+    pub sites: Vec<Site>,
+    pub siteservers: Vec<SiteServer>,
+    pub sitesubnets: Vec<SiteSubnet>,
     pub mappings: DomainMappings,
 }
 
@@ -119,6 +125,9 @@ fn run_checker(options: &Options, ad_results: &mut ADResults) -> Result<(), Box<
         &mut ad_results.enterprisecas,
         &mut ad_results.certtemplates,
         &mut ad_results.issuancepolicies,
+        &mut ad_results.sites,
+        &mut ad_results.siteservers,
+            &mut ad_results.sitesubnets,
         &ad_results.mappings.dn_sid,
         &ad_results.mappings.sid_type,
         &ad_results.mappings.fqdn_sid,
@@ -165,6 +174,9 @@ enum Parsed {
     EnterpriseCA(Box<EnterpriseCA>),
     CertTemplate(Box<CertTemplate>),
     IssuancePolicie(Box<IssuancePolicie>),
+    Site(Box<Site>),
+    SiteServer(Box<SiteServer>),
+    SiteSubnet(Box<SiteSubnet>),
     /// Filtered-out container, unknown/other object — nothing to collect.
     Skip,
 }
@@ -262,6 +274,21 @@ fn parse_one(
             issuance_policie.parse(entry, domain, &mut m.dn_sid, &mut m.sid_type, domain_sid, schema_guid_map)?;
             Parsed::IssuancePolicie(Box::new(issuance_policie))
         }
+        Type::Site => {
+            let mut site = Site::new();
+            site.parse(entry, domain, &mut m.dn_sid, &mut m.sid_type, domain_sid, schema_guid_map)?;
+            Parsed::Site(Box::new(site))
+        }
+        Type::SiteServer => {
+            let mut site_server = SiteServer::new();
+            site_server.parse(entry, domain, &mut m.dn_sid, &mut m.sid_type, domain_sid, schema_guid_map)?;
+            Parsed::SiteServer(Box::new(site_server))
+        }
+        Type::SiteSubnet => {
+            let mut site_subnet = SiteSubnet::new();
+            site_subnet.parse(entry, domain, &mut m.dn_sid, &mut m.sid_type, domain_sid, schema_guid_map)?;
+            Parsed::SiteSubnet(Box::new(site_subnet))
+        }
         // Handled sequentially before the bulk; should not reach here.
         Type::Domain | Type::Schema => Parsed::Skip,
         Type::Unknown => {
@@ -326,6 +353,9 @@ fn parse_batch(
             Parsed::EnterpriseCA(o) => results.enterprisecas.push(*o),
             Parsed::CertTemplate(o) => results.certtemplates.push(*o),
             Parsed::IssuancePolicie(o) => results.issuancepolicies.push(*o),
+            Parsed::Site(o) => results.sites.push(*o),
+            Parsed::SiteServer(o) => results.siteservers.push(*o),
+            Parsed::SiteSubnet(o) => results.sitesubnets.push(*o),
             Parsed::Skip => {}
         }
 

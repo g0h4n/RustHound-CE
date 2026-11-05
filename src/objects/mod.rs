@@ -37,3 +37,6 @@ pub mod rootca;
 pub mod enterpriseca;
 pub mod certtemplate;
 pub mod inssuancepolicie;
+pub mod site;
+pub mod siteserver;
+pub mod sitesubnet;

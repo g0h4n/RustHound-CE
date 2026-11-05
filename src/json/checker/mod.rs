@@ -20,6 +20,9 @@ use crate::objects::{
     enterpriseca::EnterpriseCA,
     certtemplate::CertTemplate,
     inssuancepolicie::IssuancePolicie,
+    site::Site,
+    siteserver::SiteServer,
+    sitesubnet::SiteSubnet,
 };
 pub mod common;
 
@@ -41,6 +44,9 @@ pub fn check_all_result(
     vec_enterprisecas:       &mut [EnterpriseCA],
     vec_certtemplates:       &mut [CertTemplate],
     vec_issuancepolicies:    &mut [IssuancePolicie],
+    vec_sites:               &mut [Site],
+    vec_siteservers:         &mut [SiteServer],
+    vec_sitesubnets:         &mut [SiteSubnet],
     dn_sid:                  &HashMap<String, String>,
     sid_type:                &HashMap<String, String>,
     fqdn_sid:                &HashMap<String, String>,
@@ -75,6 +81,9 @@ pub fn check_all_result(
     common::add_type_for_ace(vec_enterprisecas, sid_type)?;
     common::add_type_for_ace(vec_certtemplates, sid_type)?;
     common::add_type_for_ace(vec_issuancepolicies, sid_type)?;
+    common::add_type_for_ace(vec_sites, sid_type)?;
+    common::add_type_for_ace(vec_siteservers, sid_type)?;
+    common::add_type_for_ace(vec_sitesubnets, sid_type)?;
 
     common::add_type_for_allowtedtoact(vec_computers, sid_type)?;
     debug!("PrincipalType for ACEs added!");
@@ -102,8 +111,16 @@ pub fn check_all_result(
     common::add_contained_by_for(vec_enterprisecas, dn_sid, sid_type)?;
     common::add_contained_by_for(vec_certtemplates, dn_sid, sid_type)?;
     common::add_contained_by_for(vec_issuancepolicies, dn_sid, sid_type)?;
-
+    common::add_contained_by_for(vec_sites, dn_sid, sid_type)?;
+    common::replace_contained_by_dn_and_type(vec_siteservers, dn_sid, sid_type)?;
+    common::replace_contained_by_dn_and_type(vec_sitesubnets, dn_sid, sid_type)?;
     debug!("ContainedBy value added!");
+
+    if !vec_siteservers.is_empty() {
+        debug!("Adding ServerIs value started");
+        common::add_server_is_for(vec_siteservers, dn_sid)?;
+        debug!("ServerIs value added!");
+    }
 
     debug!("Adding GroupLink for issuance policies started");
     common::add_group_link_for_issuancepolicies(vec_issuancepolicies, dn_sid, sid_type)?;

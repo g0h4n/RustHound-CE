@@ -137,6 +137,9 @@ macro_rules! emit_all {
         emit($sink, "enterprisecas", &$ad.enterprisecas)?;
         emit($sink, "certtemplates", &$ad.certtemplates)?;
         emit($sink, "issuancepolicies", &$ad.issuancepolicies)?;
+        emit($sink, "sites", &$ad.sites)?;
+        emit($sink, "siteservers", &$ad.siteservers)?;
+        emit($sink, "sitesubnets", &$ad.sitesubnets)?;
     }};
 }
 

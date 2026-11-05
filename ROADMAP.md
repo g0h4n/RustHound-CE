@@ -21,17 +21,19 @@
     - [RootCA](#rootca)
     - [EnterpriseCA](#enterpriseca)
     - [CertTemplate](#certtemplate)
+    - [Site](#site)
+    - [SiteServer](#siteserver)
+    - [SiteSubnet](#sitesubnet)
 - [ACE right names (edges)](#ace-right-names-edges)
 - [Divergences to review](#divergences-to-review)
 
 ## Limitations
 
-> Not all [SharpHound](https://github.com/BloodHoundAD/SharpHound) features have been implemented. Some exist in `rusthound-ce` and not in [SharpHound](https://github.com/BloodHoundAD/SharpHound) or [BloodHound-Python](https://github.com/fox-it/BloodHound.py). Please refer to the [roadmap](./ROADMAP.md) for more information.
+> Not all [SharpHound](https\://github.com/BloodHoundAD/SharpHound) features have been implemented. Some exist in `rusthound-ce` and not in [SharpHound](https\://github.com/BloodHoundAD/SharpHound) or [BloodHound-Python](https\://github.com/fox-it/BloodHound.py). Please refer to the [roadmap](./ROADMAP.md) for more information.
 
 ### Compatibility with SharpHound
 
-Attribute-by-attribute comparison between `rusthound-ce` and `SharpHound v2.16.0.0`,
-measured on the same domain on `2026-09-30`, `rusthound-ce` side updated after the `LocalGroups` collection over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69)), the WebClient (WebDAV) probe over SMB ([#72](https://github.com/g0h4n/RustHound-CE/issues/72)) and the CA registry values over MS-RRP ([#97](https://github.com/g0h4n/RustHound-CE/issues/97)).
+Attribute-by-attribute compatibility baseline for `rusthound-ce` against `SharpHound v2.17.1.0` (`20261105`), using collections from `ESSOS.LOCAL` on `2026-11-05`. The 13 pre-existing object-type scores remain from the `SharpHound v2.16.0.0` comparison on `2026-09-30` (after SAMR LocalGroups [#69](https\://github.com/g0h4n/RustHound-CE/issues/69), SMB WebClient [#72](https\://github.com/g0h4n/RustHound-CE/issues/72), and MS-RRP CA flags [#97](https\://github.com/g0h4n/RustHound-CE/issues/97)); they have **not yet been revalidated field-by-field** against v2.17.1.0. The three new Site object types are based on the v2.17.1.0 JSON outputs.
 Counts every checkbox of the [List of attributes](#list-of-attributes) section, including nested sub-fields.
 
 | Object | Attributes | :white_check_mark: Implemented | :red_circle: Missing | Compatibility |
@@ -49,11 +51,14 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 | [IssuancePolicies](#issuancepolicies) | 27 | 24 | 3 | `█████████░` 88.9% |
 | [EnterpriseCA](#enterpriseca) | 70 | 62 | 8 | `█████████░` 88.6% |
 | [Computer](#computer) | 119 | 86 | 33 | `███████░░░` 72.3% |
-| **Total** | **587** | **522** | **65** | **`█████████░` 88.9%** |
+| [Site](#site) | 27 | 25 | 2 | `█████████░` 92.6% |
+| [SiteServer](#siteserver) | 26 | 25 | 1 | `██████████` 96.2% |
+| [SiteSubnet](#sitesubnet) | 25 | 24 | 1 | `██████████` 96.0% |
+| **Total** | **665** | **596** | **69** | **`█████████░` 89.6%** |
 
-> The lowest scores come from remote collection rather than LDAP parsing.
-> `LocalGroups` is now collected over SAMR ([#69](https://github.com/g0h4n/RustHound-CE/issues/69))
-> and `IsWebClientRunning` over SMB ([#72](https://github.com/g0h4n/RustHound-CE/issues/72));
+> The new Site object types are now exported. Their attribute coverage is high, but full ACE parity and inherited ACE hashes are still pending. Among the existing object types, the lowest scores come from remote collection rather than LDAP parsing.
+> `LocalGroups` is now collected over SAMR ([#69](https\://github.com/g0h4n/RustHound-CE/issues/69))
+> and `IsWebClientRunning` over SMB ([#72](https\://github.com/g0h4n/RustHound-CE/issues/72));
 > `Computer` is still pulled down by `NTLMRegistryData`, `SmbInfo`
 > and `DCRegistryData`, and `EnterpriseCA` by
 > `CARegistryData`:`EnrollmentAgentRestrictions` (the CA registry flags are now read over MS-RRP).
@@ -69,8 +74,8 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
   - [x] Prompt for password :white_check_mark:
 
 ## Transport
-  - [x] LDAP / LDAPS (default) via [ldap3](https://crates.io/crates/ldap3) :white_check_mark:
-  - [x] ADWS / SOAP over TCP 9389 (`--transport soap`), via [adws](https://crates.io/crates/adws) 
+  - [x] LDAP / LDAPS (default) via [ldap3](https\://crates.io/crates/ldap3) :white_check_mark:
+  - [x] ADWS / SOAP over TCP 9389 (`--transport soap`), via [adws](https\://crates.io/crates/adws) 
     - [x] `DirectoryTransport` trait abstracting the directory read (naming contexts + paged search with SD-flags) :white_check_mark:
     - [x] LDAP implementation (existing behaviour behind the trait) :white_check_mark:
     - [x] ADWS implementation (adws, `SearchEntry` => `LdapSearchEntry`) :white_check_mark:
@@ -92,12 +97,15 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
   - [x] certtemplates.json :white_check_mark:
   - [x] issuancepolicies.json :white_check_mark:
   - [x] ntauthstores.json :white_check_mark:
+  - [x] sites.json :white_check_mark: :new:
+  - [x] siteservers.json :white_check_mark: :new:
+  - [x] sitesubnets.json :white_check_mark: :new:
   - [x] all.zip :white_check_mark:
 
 ## Modules
-- [x] Retreive LAPS password if your user can read them **automatic** :white_check_mark:
-- [ ] Retreive LAPSv2 password if your user can read them **automatic** :red_circle:
-- [x] Resolve FQDN computers found to IP address **--fqdn-resolver** :white_check_mark:
+- [x] Retreive LAPS password if your user can read them ****automatic**** :white_check_mark:
+- [ ] Retreive LAPSv2 password if your user can read them ****automatic**** :red_circle:
+- [x] Resolve FQDN computers found to IP address ****--fqdn-resolver**** :white_check_mark:
 - [x] Session-collection feature, enumerates active sessions over three native RPC paths (SRVSVC, WKSSVC, WINREG) :white_check_mark:
 - [x] GPO-based collection from SYSVOL, reads `GptTmpl.inf` and `Groups.xml`, GPOChanges (LocalAdmins / RemoteDesktopUsers / DcomUsers / PSRemoteUsers) :white_check_mark:
 - [x] Local group enumeration over SAMR (`LocalGroups`, feeds `AdminTo` / `CanRDP` / `CanPSRemote` / `ExecuteDCOM`) :white_check_mark: :new:
@@ -111,7 +119,7 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 
 ## Arguments
 
-> :new: Planned. A shared **SMB / RPC collection** option group that paces and bounds every machine-contacting module. These flags MUST be consumed by *all* scan modules, `Session`, `LocalGroup`, `WebClient`, `CARegistry` and the future MS-RRP registry collectors, instead of the per-module constants hard-coded today.
+> :new: Planned. A shared ****SMB / RPC collection**** option group that paces and bounds every machine-contacting module. These flags MUST be consumed by **all** scan modules, `Session`, `LocalGroup`, `WebClient`, `CARegistry` and the future MS-RRP registry collectors, instead of the per-module constants hard-coded today.
 
 - [ ] Multi-value `-c` / `CollectionMethods` :red_circle: :new: accept several collection methods at once, comma-separated or repeated (`-c LocalGroup,WebClient` or `-c LocalGroup -c WebClient`). Replaces the single-value `CollectionMethod` enum with a `CollectionMethods` set; `DCOnly` / `LdapOnly` stay dominant no-machine scopes that suppress every member-machine collector even when combined. Today `-c` takes a single value (`All` is the only way to run several collectors together).
 - [ ] `--workers` :red_circle: :new: max concurrent in-flight SMB sessions (bounded stream), default 50. Replaces the per-module `DEFAULT_CONCURRENCY`
@@ -256,7 +264,7 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 - [x] `UserRights`:`LocalNames` :white_check_mark: (emitted but always empty, rebuilt from `GptTmpl.inf`)
 - [x] `UserRights`:`Collected` :white_check_mark:
 - [x] `UserRights`:`FailureReason` :white_check_mark:
-- [ ] `DCRegistryData` :red_circle: need RPC call and [GetRegistryKeyData src Helper.cs](https://github.com/BloodHoundAD/SharpHoundCommon/blob/v3/src/CommonLib/Helpers.cs#L278), the keys are emitted as a raw `null` instead of the `{Collected, FailureReason, Value}` wrapper
+- [ ] `DCRegistryData` :red_circle: need RPC call and [GetRegistryKeyData src Helper.cs](https\://github.com/BloodHoundAD/SharpHoundCommon/blob/v3/src/CommonLib/Helpers.cs#L278), the keys are emitted as a raw `null` instead of the `{Collected, FailureReason, Value}` wrapper
     - [ ] `CertificateMappingMethods`:`Value` :red_circle:
     - [ ] `CertificateMappingMethods`:`Collected` :red_circle:
     - [ ] `CertificateMappingMethods`:`FailureReason` :red_circle:
@@ -655,11 +663,11 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
     - [x] `Data`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark:
     - [x] `Collected` :white_check_mark:
     - [x] `FailureReason` :white_check_mark:
-- [ ] `CARegistryData`:`EnrollmentAgentRestrictions` :red_circle: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (not read yet; emitted as `Collected: false` with an empty list)
+- [ ] `CARegistryData`:`EnrollmentAgentRestrictions` :red_circle: src [ObjectProcessors.cs](https\://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (not read yet; emitted as `Collected: false` with an empty list)
     - [ ] `Restrictions` :red_circle:
     - [ ] `Collected` :red_circle:
     - [ ] `FailureReason` :red_circle:
-- [x] `CARegistryData`:`IsUserSpecifiesSanEnabled` :white_check_mark: :new: src [ObjectProcessors.cs](https://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (policy module `EditFlags` read over MS-RRP; password or NT hash only)
+- [x] `CARegistryData`:`IsUserSpecifiesSanEnabled` :white_check_mark: :new: src [ObjectProcessors.cs](https\://github.com/BloodHoundAD/SharpHound/blob/2.X/src/Runtime/ObjectProcessors.cs#L667C28-L667C38) (policy module `EditFlags` read over MS-RRP; password or NT hash only)
     - [x] `Value` :white_check_mark:
     - [x] `Collected` :white_check_mark:
     - [x] `FailureReason` :white_check_mark:
@@ -739,9 +747,93 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 - [x] `ContainedBy`:`ObjectIdentifier` :white_check_mark:
 - [x] `ContainedBy`:`ObjectType` :white_check_mark:
 
+### Site
+- [x] `Properties`:`objectclass` :white_check_mark: :new:
+- [x] `Properties`:`whencreated` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`domain` :white_check_mark: :new:
+- [x] `Properties`:`name` :white_check_mark: :new:
+- [x] `Properties`:`distinguishedname` :white_check_mark: :new:
+- [x] `Properties`:`domainsid` :white_check_mark: :new:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark: :new:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark: :new:
+- [x] `Properties`:`isaclprotected` :white_check_mark: :new:
+- [x] `ChildObjects`:`ObjectIdentifier` :white_check_mark: :new:
+- [x] `ChildObjects`:`ObjectType` :white_check_mark: :new:
+- [x] `Links`:`GUID` :white_check_mark: :new:
+- [x] `Links`:`IsEnforced` :white_check_mark: :new:
+- [ ] `InheritanceHashes` :red_circle: :new:
+- [x] `Aces`:`PrincipalSID` :white_check_mark: :new:
+- [x] `Aces`:`PrincipalType` :white_check_mark: :new:
+- [x] `Aces`:`RightName` :white_check_mark: :new:
+- [x] `Aces`:`IsInherited` :white_check_mark: :new:
+- [ ] `Aces`:`InheritanceHash` :red_circle: :new:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark: :new:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark: :new:
+- [x] `ObjectIdentifier` :white_check_mark: :new:
+- [x] `IsDeleted` :white_check_mark: :new:
+- [x] `IsACLProtected` :white_check_mark: :new:
+- [x] `ContainedBy`:`ObjectIdentifier` :white_check_mark: :new:
+- [x] `ContainedBy`:`ObjectType` :white_check_mark: :new:
+
+### SiteServer
+- [x] `Properties`:`objectclass` :white_check_mark: :new:
+- [x] `Properties`:`whencreated` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`dnshostname` :white_check_mark: :new:
+- [x] `Properties`:`serverreference` :white_check_mark: :new:
+- [x] `Properties`:`domain` :white_check_mark: :new:
+- [x] `Properties`:`name` :white_check_mark: :new:
+- [x] `Properties`:`distinguishedname` :white_check_mark: :new:
+- [x] `Properties`:`domainsid` :white_check_mark: :new:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark: :new:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark: :new:
+- [x] `Properties`:`isaclprotected` :white_check_mark: :new:
+- [x] `ServerIs`:`ObjectIdentifier` :white_check_mark: :new:
+- [x] `ServerIs`:`ObjectType` :white_check_mark: :new:
+- [x] `Aces`:`PrincipalSID` :white_check_mark: :new:
+- [x] `Aces`:`PrincipalType` :white_check_mark: :new:
+- [x] `Aces`:`RightName` :white_check_mark: :new:
+- [x] `Aces`:`IsInherited` :white_check_mark: :new:
+- [ ] `Aces`:`InheritanceHash` :red_circle: :new:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark: :new:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark: :new:
+- [x] `ObjectIdentifier` :white_check_mark: :new:
+- [x] `IsDeleted` :white_check_mark: :new:
+- [x] `IsACLProtected` :white_check_mark: :new:
+- [x] `ContainedBy`:`ObjectIdentifier` :white_check_mark: :new:
+- [x] `ContainedBy`:`ObjectType` :white_check_mark: :new:
+
+### SiteSubnet
+- [x] `Properties`:`objectclass` :white_check_mark: :new:
+- [x] `Properties`:`description` :white_check_mark: :new:
+- [x] `Properties`:`whencreated` :white_check_mark: :new:
+- [x] `Properties`:`objectguid` :white_check_mark: :new:
+- [x] `Properties`:`cn` :white_check_mark: :new:
+- [x] `Properties`:`siteobject` :white_check_mark: :new:
+- [x] `Properties`:`domain` :white_check_mark: :new:
+- [x] `Properties`:`name` :white_check_mark: :new:
+- [x] `Properties`:`distinguishedname` :white_check_mark: :new:
+- [x] `Properties`:`domainsid` :white_check_mark: :new:
+- [x] `Properties`:`doesanyacegrantownerrights` :white_check_mark: :new:
+- [x] `Properties`:`doesanyinheritedacegrantownerrights` :white_check_mark: :new:
+- [x] `Properties`:`isaclprotected` :white_check_mark: :new:
+- [x] `Aces`:`PrincipalSID` :white_check_mark: :new:
+- [x] `Aces`:`PrincipalType` :white_check_mark: :new:
+- [x] `Aces`:`RightName` :white_check_mark: :new:
+- [x] `Aces`:`IsInherited` :white_check_mark: :new:
+- [ ] `Aces`:`InheritanceHash` :red_circle: :new:
+- [x] `Aces`:`IsPermissionForOwnerRightsSid` :white_check_mark: :new:
+- [x] `Aces`:`IsInheritedPermissionForOwnerRightsSid` :white_check_mark: :new:
+- [x] `ObjectIdentifier` :white_check_mark: :new:
+- [x] `IsDeleted` :white_check_mark: :new:
+- [x] `IsACLProtected` :white_check_mark: :new:
+- [x] `ContainedBy`:`ObjectIdentifier` :white_check_mark: :new:
+- [x] `ContainedBy`:`ObjectType` :white_check_mark: :new:
+
 ## ACE right names (edges)
 
-Right names produced in the `Aces` arrays, compared with SharpHound `v2.16.0.0` on the same domain.
+Right names produced in the `Aces` arrays. Existing edge parity is based on SharpHound `v2.16.0.0` on the same domain; revalidation against `v2.17.1.0` is pending.
 
 - [x] `GenericAll` :white_check_mark:
 - [x] `GenericWrite` :white_check_mark:
@@ -758,14 +850,3 @@ Right names produced in the `Aces` arrays, compared with SharpHound `v2.16.0.0` 
 - [x] `ManageCA` :white_check_mark:
 - [x] `ManageCertificates` :white_check_mark:
 - [ ] `WriteAccountRestrictions` :red_circle: :new:
-
-## Divergences to review
-
-Items found while diffing the two collections that are not feature gaps, but are worth a decision.
-
-- Duplicate node: `TESTPTC.ESSOS.LOCAL` is written twice in `computers.json` (4 entries for 3 real machines). This one is an export bug rather than a roadmap item.
-- `Properties`:`highvalue` is still emitted on Domain / Computer / User / Group / OU / GPO / Container. The attribute was dropped from BloodHound CE and SharpHound `v2.16.0.0` no longer produces it, so it is a candidate for removal rather than for the roadmap.
-- `Properties`:`description` is emitted on object types where SharpHound does not produce it (Domain, AIACA, RootCA, EnterpriseCA, NtAuthStore, CertTemplate, IssuancePolicy). Extra data, harmless for the ingest.
-- `DomainSID` is emitted at node level on AIACA / RootCA / NtAuthStore, which SharpHound does not do.
-- `Links` is emitted on GPO nodes and is always empty. SharpHound does not emit the key at all on that node type.
-- Container scope differs: SharpHound also walks `CN=Operations,CN=ForestUpdates,CN=Configuration` (131 extra containers on the test domain), `rusthound-ce` does not. Conversely `rusthound-ce` emits `CN=Deleted Objects` and `CN=MicrosoftDNS` containers that SharpHound skips.
