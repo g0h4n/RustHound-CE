@@ -269,13 +269,7 @@ fn ace_maker<T: LdapObject>(
                 || ((MaskFlags::GENERIC_WRITE.bits() | mask) == mask)
             {
                 trace!("ACE MASK contain: GENERIC_ALL or WRITE_DACL or WRITE_OWNER or GENERIC_WRITE");
-                let inherited_ace_guid = decode_guid_le(&inherited_object_type.to_le_bytes().to_vec()).to_lowercase();
 
-                if &flags & ACE_INHERITED_OBJECT_TYPE_PRESENT == ACE_INHERITED_OBJECT_TYPE_PRESENT 
-                    && !ace_applies(&inherited_ace_guid, entry_type, guid_map) 
-                {
-                    continue;
-                }
                 if flags & ACE_OBJECT_TYPE_PRESENT == ACE_OBJECT_TYPE_PRESENT
                     && !ace_applies(&ace_guid, entry_type, guid_map) 
                 {
