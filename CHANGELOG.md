@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.51 - 2026-11-07
+
+### Fixed
+
+- Fixed the ACL parser dropping non-inherit-only `WriteDacl`/`GenericAll` ACEs with `ACE_INHERITED_OBJECT_TYPE_PRESENT` set on the object itself (e.g. the Exchange "PrivExchange" `WriteDacl` on the domain root), causing a missing attack path in BloodHound ([#114](https://github.com/g0h4n/RustHound-CE/issues/114)). Thanks to [@n3oari](https://github.com/n3oari).
+
 ## 2.5.50 - 2026-11-05
 
 ### Added
