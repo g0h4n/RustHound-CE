@@ -256,6 +256,8 @@ OPTIONAL FLAGS:
           Buffer size to use when caching [default: 1000]
       --resume
           Resume the collection from the last saved state
+      --ldap-timeout <MS>
+          Connection timeout in milliseconds for the directory transport over LDAP. Useful over slow links such as SOCKS/proxychains [default: 10000]
 
 OPTIONAL MODULES:
       --fqdn-resolver  Use fqdn-resolver module to get computers IP address
