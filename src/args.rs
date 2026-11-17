@@ -34,7 +34,7 @@ pub struct Options {
     pub zip: bool,
     pub verbose: log::LevelFilter,
     pub ldap_filter: String,
-
+    pub ldap_timeout: std::time::Duration,
     pub cache: bool,
     pub cache_buffer_size: usize,
     pub resume: bool,
@@ -258,6 +258,14 @@ fn cli() -> Command {
         .required(false)
         .action(ArgAction::SetTrue)
     )
+    .arg(Arg::new("ldap_timeout")
+        .long("ldap-timeout")
+        .help("Connection timeout in milliseconds for the directory transport over LDAP. Useful over slow links such as SOCKS/proxychains")
+        .required(false)
+        .value_name("MS")
+        .value_parser(value_parser!(u64))
+        .default_value("10000")
+    )
     .next_help_heading("OPTIONAL MODULES")
     .arg(Arg::new("fqdn-resolver")
         .long("fqdn-resolver")
@@ -371,6 +379,9 @@ pub fn extract_args() -> Options {
         .copied()
         .unwrap_or(1000);
     let resume = matches.get_flag("resume");
+    let ldap_timeout = std::time::Duration::from_millis(
+        matches.get_one::<u64>("ldap_timeout").copied().unwrap_or(10_000),
+    );
 
     // Return all
     Options {
@@ -396,6 +407,7 @@ pub fn extract_args() -> Options {
         zip: z,
         verbose: v,
         ldap_filter: ldap_filter.to_string(),
+        ldap_timeout,
         cache,
         cache_buffer_size,
         resume,
@@ -464,6 +476,7 @@ pub fn auto_args() -> Options {
         zip: true,
         verbose: log::LevelFilter::Info,
         ldap_filter: "(objectClass=*)".to_string(),
+        ldap_timeout: std::time::Duration::from_secs(10),
         cache: false,
         cache_buffer_size: 1000,
         resume: false,
