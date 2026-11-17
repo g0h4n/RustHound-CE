@@ -41,7 +41,7 @@ use dcerpc::rrp::{RegistryClient, RegistrySession};
 use dcerpc::srvsvc::SrvsvcClient;
 use dcerpc::wkssvc::{WkstaUser, WkstaUserClient};
 use smb2_client::SmbClient;
-use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_identity, SmbAuth};
+use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_identity, throttle_delay, SmbAuth};
 use crate::modules::registry::{rrp_bind_unavailable, RRP_NEEDS_SECRET};
 
 use crate::args::{CollectionMethod, Options};
@@ -158,11 +158,15 @@ pub async fn run(
     // 2) Select ACTIVE targets only (enabled + pwdLastSet within the expiry window).
     //    The host is the computer FQDN (properties.name); no fqdn->ip lookup.
     let expiry_days = args.computer_expiry_days;
-    let targets: Vec<(String, String)> = computers
+    let mut targets: Vec<(String, String)> = computers
         .iter()
         .filter(|c| c.is_active(expiry_days))
         .map(|c| (c.properties().name().clone(), c.object_identifier().clone()))
         .collect();
+    if args.opsec {
+        use rand::seq::SliceRandom;
+        targets.shuffle(&mut rand::thread_rng());
+    }
 
     info!("[sessions] {} active target(s) after expiry/enabled filter", targets.len());
     for (h, _) in &targets {
@@ -173,6 +177,8 @@ pub async fn run(
     let sem = Arc::new(Semaphore::new(args.workers));
     let smb_timeout = args.smb_timeout;
     let host_timeout = args.host_timeout;
+    let throttle = args.throttle;
+    let jitter = args.jitter;
     // SMB sign-in identity: the account's own domain from -u, else --domain.
     let (signin_domain, user) = smb_identity(args.username.as_deref().unwrap_or_default(), &args.domain);
     let password = args.password.clone().unwrap_or_default();
@@ -212,6 +218,7 @@ pub async fn run(
             async move {
                 trace!("[sessions] [{host}] task scheduled, awaiting concurrency permit");
                 let _permit = sem.acquire().await.unwrap();
+                throttle_delay(throttle, jitter).await;
                 trace!("[sessions] [{host}] permit acquired, entering enumerate_host");
                 let hf = enumerate_host(
                     &host, computer_sid, &signin_domain, &user, &password,

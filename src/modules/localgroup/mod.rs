@@ -36,7 +36,7 @@ use crate::args::Options;
 use crate::objects::common::{LocalGroup, Member, UserRight};
 use crate::objects::computer::Computer;
 use crate::objects::user::User;
-use crate::transport::smb::{connect_ipc, open_rpc_pipe, smb_identity, SmbAuth};
+use crate::transport::smb::{connect_ipc, open_rpc_pipe, smb_identity, throttle_delay, SmbAuth};
 
 use self::samr::{is_domain_controller, is_under, sid_to_string, SamrAliasClient};
 use self::types::{group_display_name, group_object_id, Alias, AliasFinding, HostFindings, ALIASES};
@@ -53,17 +53,23 @@ pub async fn run(
         return Ok(());
     }
 
-    let targets: Vec<(String, String)> = computers
+    let mut targets: Vec<(String, String)> = computers
         .iter()
         .filter(|c| is_active(c, args.computer_expiry_days))
         .map(|c| (c.properties().name().clone(), c.object_identifier().clone()))
         .collect();
+    if args.opsec {
+        use rand::seq::SliceRandom;
+        targets.shuffle(&mut rand::thread_rng());
+    }
 
     info!("[localgroups] {} active target(s) after expiry/enabled filter", targets.len());
 
     let sem = Arc::new(Semaphore::new(args.workers));
     let smb_timeout = args.smb_timeout;
     let host_timeout = args.host_timeout;
+    let throttle = args.throttle;
+    let jitter = args.jitter;
     // `domain` is the collected domain (DC check, group SIDs); the SMB sign-in
     // uses the account's own domain from -u, else --domain.
     let domain = args.domain.clone();
@@ -89,6 +95,7 @@ pub async fn run(
             let kdc = kdc.clone();
             async move {
                 let _permit = sem.acquire().await.unwrap();
+                throttle_delay(throttle, jitter).await;
                 enumerate_host(
                     &host, computer_sid, &domain, &signin_domain, &user, &password,
                     nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc,

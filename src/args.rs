@@ -90,6 +90,11 @@ pub enum Transport {
 // Current RustHound version
 pub const RUSTHOUND_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+// --opsec stealth preset values, applied only to flags the user did not set.
+const OPSEC_WORKERS: usize = 1;         // far fewer concurrent SMB sessions
+const OPSEC_THROTTLE_MS: u64 = 1_000;   // base delay before each connection
+const OPSEC_JITTER_MS: u64 = 1_000;     // random extra delay on top of throttle
+
 #[cfg(not(feature = "noargs"))]
 fn cli() -> Command {
     // Return Command args
@@ -452,10 +457,17 @@ pub fn extract_args() -> Options {
         matches.get_one::<u64>("host_timeout").copied().unwrap_or(8_000),
     );
     let computer_expiry_days = matches.get_one::<i64>("computer_expiry_days").copied().unwrap_or(60);
-    let workers = matches.get_one::<usize>("workers").copied().unwrap_or(50).max(1);
-    let throttle = matches.get_one::<u64>("throttle").copied().unwrap_or(0);
-    let jitter = matches.get_one::<u64>("jitter").copied().unwrap_or(0);
+    let mut workers = matches.get_one::<usize>("workers").copied().unwrap_or(50).max(1);
+    let mut throttle = matches.get_one::<u64>("throttle").copied().unwrap_or(0);
+    let mut jitter = matches.get_one::<u64>("jitter").copied().unwrap_or(0);
     let opsec = matches.get_flag("opsec");
+    if opsec {
+        use clap::parser::ValueSource;
+        let is_explicit = |id: &str| matches.value_source(id) == Some(ValueSource::CommandLine);
+        if !is_explicit("workers")  { workers = OPSEC_WORKERS; }
+        if !is_explicit("throttle") { throttle = OPSEC_THROTTLE_MS; }
+        if !is_explicit("jitter")   { jitter = OPSEC_JITTER_MS; }
+    }
 
     // Return all
     Options {
