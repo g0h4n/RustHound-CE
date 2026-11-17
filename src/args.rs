@@ -34,10 +34,18 @@ pub struct Options {
     pub zip: bool,
     pub verbose: log::LevelFilter,
     pub ldap_filter: String,
-    pub ldap_timeout: std::time::Duration,
     pub cache: bool,
     pub cache_buffer_size: usize,
     pub resume: bool,
+    // Collection tuning / OPSEC (SMB/RPC side)
+    pub ldap_timeout: std::time::Duration,
+    pub workers: usize,
+    pub throttle: u64,
+    pub jitter: u64,
+    pub smb_timeout: u64,
+    pub host_timeout: u64,
+    pub computer_expiry_days: i64,
+    pub opsec: bool,
 }
 
 impl Options {
@@ -258,6 +266,7 @@ fn cli() -> Command {
         .required(false)
         .action(ArgAction::SetTrue)
     )
+    .next_help_heading("COLLECTION TUNING / OPSEC")
     .arg(Arg::new("ldap_timeout")
         .long("ldap-timeout")
         .help("Connection timeout in milliseconds for the directory transport over LDAP. Useful over slow links such as SOCKS/proxychains")
@@ -265,6 +274,60 @@ fn cli() -> Command {
         .value_name("MS")
         .value_parser(value_parser!(u64))
         .default_value("10000")
+    )
+    .arg(Arg::new("workers")
+        .long("workers")
+        .help("Max concurrent in-flight SMB sessions (bounded stream)")
+        .required(false)
+        .value_name("N")
+        .value_parser(value_parser!(usize))
+        .default_value("50")
+    )
+    .arg(Arg::new("throttle")
+        .long("throttle")
+        .help("Base delay before each SMB/RPC connection, in milliseconds (SharpHound --Throttle)")
+        .required(false)
+        .value_name("MS")
+        .value_parser(value_parser!(u64))
+        .default_value("0")
+    )
+    .arg(Arg::new("jitter")
+        .long("jitter")
+        .help("Random extra delay added on top of --throttle, in milliseconds (SharpHound --Jitter)")
+        .required(false)
+        .value_name("MS")
+        .value_parser(value_parser!(u64))
+        .default_value("0")
+    )
+    .arg(Arg::new("smb_timeout")
+        .long("smb-timeout")
+        .help("TCP/445 reachability pre-check timeout, in milliseconds")
+        .required(false)
+        .value_name("MS")
+        .value_parser(value_parser!(u64))
+        .default_value("1000")
+    )
+    .arg(Arg::new("host_timeout")
+        .long("host-timeout")
+        .help("Whole per-host budget (connect + auth + probe), in milliseconds")
+        .required(false)
+        .value_name("MS")
+        .value_parser(value_parser!(u64))
+        .default_value("8000")
+    )
+    .arg(Arg::new("computer_expiry_days")
+        .long("computer-expiry-days")
+        .help("Only probe computers whose pwdLastSet is within N days (SharpHound ComputerExpiryDays)")
+        .required(false)
+        .value_name("DAYS")
+        .value_parser(value_parser!(i64))
+        .default_value("60")
+    )
+    .arg(Arg::new("opsec")
+        .long("opsec")
+        .help("Stealth preset: shuffle target order, lower --workers, add --throttle/--jitter (explicit CLI values win)")
+        .required(false)
+        .action(ArgAction::SetTrue)
     )
     .next_help_heading("OPTIONAL MODULES")
     .arg(Arg::new("fqdn-resolver")
@@ -382,6 +445,13 @@ pub fn extract_args() -> Options {
     let ldap_timeout = std::time::Duration::from_millis(
         matches.get_one::<u64>("ldap_timeout").copied().unwrap_or(10_000),
     );
+    let workers = matches.get_one::<usize>("workers").copied().unwrap_or(50).max(1);
+    let throttle = matches.get_one::<u64>("throttle").copied().unwrap_or(0);
+    let jitter = matches.get_one::<u64>("jitter").copied().unwrap_or(0);
+    let smb_timeout = matches.get_one::<u64>("smb_timeout").copied().unwrap_or(1_000);
+    let host_timeout = matches.get_one::<u64>("host_timeout").copied().unwrap_or(8_000);
+    let computer_expiry_days = matches.get_one::<i64>("computer_expiry_days").copied().unwrap_or(60);
+    let opsec = matches.get_flag("opsec");
 
     // Return all
     Options {
@@ -407,10 +477,17 @@ pub fn extract_args() -> Options {
         zip: z,
         verbose: v,
         ldap_filter: ldap_filter.to_string(),
-        ldap_timeout,
         cache,
         cache_buffer_size,
         resume,
+        ldap_timeout,
+        workers,
+        throttle,
+        jitter,
+        smb_timeout,
+        host_timeout,
+        computer_expiry_days,
+        opsec,
     }
 }
 
@@ -476,10 +553,17 @@ pub fn auto_args() -> Options {
         zip: true,
         verbose: log::LevelFilter::Info,
         ldap_filter: "(objectClass=*)".to_string(),
-        ldap_timeout: std::time::Duration::from_secs(10),
         cache: false,
         cache_buffer_size: 1000,
         resume: false,
+        ldap_timeout: std::time::Duration::from_secs(10),
+        workers: 50,
+        throttle: 0,
+        jitter: 0,
+        smb_timeout: 1_000,
+        host_timeout: 8_000,
+        computer_expiry_days: 60,
+        opsec: false,
     }
 }
 
