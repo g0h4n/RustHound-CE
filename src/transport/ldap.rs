@@ -54,8 +54,9 @@ pub async fn ldap_auth(options: &Options) -> Result<ldap3::Ldap, Box<dyn Error>>
         use_cert,
     )?;
 
+    debug!("LDAP connection timeout: {:?}", options.ldap_timeout);
     let mut consettings = LdapConnSettings::new()
-        .set_conn_timeout(std::time::Duration::from_secs(10))
+        .set_conn_timeout(options.ldap_timeout)
         .set_no_tls_verify(true);
     if use_cert {
         let config = crate::transport::cert::build_client_config(
