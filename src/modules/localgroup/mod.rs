@@ -41,11 +41,6 @@ use crate::transport::smb::{connect_ipc, open_rpc_pipe, smb_identity, SmbAuth};
 use self::samr::{is_domain_controller, is_under, sid_to_string, SamrAliasClient};
 use self::types::{group_display_name, group_object_id, Alias, AliasFinding, HostFindings, ALIASES};
 
-const DEFAULT_CONCURRENCY: usize = 10;
-const DEFAULT_PORT_TIMEOUT_MS: u64 = 1_500;
-const DEFAULT_HOST_TIMEOUT_MS: u64 = 8_000;
-const DEFAULT_EXPIRY_DAYS: i64 = 60;
-
 /// Entry point, called from `modules::run_modules`.
 pub async fn run(
     args: &Options,
@@ -60,13 +55,15 @@ pub async fn run(
 
     let targets: Vec<(String, String)> = computers
         .iter()
-        .filter(|c| is_active(c, DEFAULT_EXPIRY_DAYS))
+        .filter(|c| is_active(c, args.computer_expiry_days))
         .map(|c| (c.properties().name().clone(), c.object_identifier().clone()))
         .collect();
 
     info!("[localgroups] {} active target(s) after expiry/enabled filter", targets.len());
 
-    let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
+    let sem = Arc::new(Semaphore::new(args.workers));
+    let smb_timeout = args.smb_timeout;
+    let host_timeout = args.host_timeout;
     // `domain` is the collected domain (DC check, group SIDs); the SMB sign-in
     // uses the account's own domain from -u, else --domain.
     let domain = args.domain.clone();
@@ -95,11 +92,12 @@ pub async fn run(
                 enumerate_host(
                     &host, computer_sid, &domain, &signin_domain, &user, &password,
                     nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc,
+                    smb_timeout, host_timeout,
                 )
                 .await
             }
         })
-        .buffer_unordered(DEFAULT_CONCURRENCY)
+        .buffer_unordered(args.workers)
         .collect()
         .await;
 
@@ -128,8 +126,10 @@ async fn enumerate_host(
     nt_hash: Option<&[u8; 16]>,
     kerberos_ccache: Option<&str>,
     kdc: &str,
+    smb_timeout: Duration,
+    host_timeout: Duration,
 ) -> HostFindings {
-    if !is_reachable(host, DEFAULT_PORT_TIMEOUT_MS).await {
+    if !is_reachable(host, smb_timeout).await {
         trace!("[{host}] 445/tcp unreachable - skip");
         return HostFindings {
             computer_sid,
@@ -177,7 +177,7 @@ async fn enumerate_host(
         (aliases, errors, is_dc)
     };
 
-    match timeout(Duration::from_millis(DEFAULT_HOST_TIMEOUT_MS), work).await {
+    match timeout(host_timeout, work).await {
         Ok((aliases, errors, is_dc)) => HostFindings {
             computer_sid, host: host.to_string(), is_dc, aliases, errors,
         },
@@ -376,10 +376,10 @@ fn synth_rdp_userright(
 
 // Helpers, identical to the sessions module
 
-async fn is_reachable(host: &str, port_timeout_ms: u64) -> bool {
+async fn is_reachable(host: &str, port_timeout_ms: Duration) -> bool {
     matches!(
         timeout(
-            Duration::from_millis(port_timeout_ms),
+            port_timeout_ms,
             TcpStream::connect(format!("{host}:445"))
         )
         .await,

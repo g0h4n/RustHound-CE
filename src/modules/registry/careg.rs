@@ -50,6 +50,7 @@ enum Attempt {
 
 /// Collect the CA-registry values for one CA host: 445 pre-check, then the
 /// connect + bind + reads under a whole-CA timeout.
+#[allow(clippy::too_many_arguments)]
 pub async fn collect(
     host: &str,
     domain: &str,
@@ -57,9 +58,10 @@ pub async fn collect(
     password: &str,
     nt_hash: Option<&[u8; 16]>,
     ca_name: &str,
+    smb_timeout: Duration,
 ) -> CaReads {
     // SharpHound-style reachability pre-check: 445 open within budget.
-    if !is_reachable(host, super::DEFAULT_PORT_TIMEOUT_MS).await {
+    if !is_reachable(host, smb_timeout).await {
         trace!("[careg] [{host}] 445/tcp unreachable - skip");
         return CaReads::both_failed(format!("{host}: 445/tcp unreachable"));
     }

@@ -36,11 +36,6 @@ use crate::objects::common::WebClientRunning;
 use crate::objects::computer::Computer;
 use crate::transport::smb::{connect_ipc, is_reachable, nt_hash_from_str, smb_identity, SmbAuth};
 
-const DEFAULT_CONCURRENCY: usize = 10;      // ~ SharpHound --Throttle
-const DEFAULT_PORT_TIMEOUT_MS: u64 = 1_500; // 445 pre-check budget
-const DEFAULT_HOST_TIMEOUT_MS: u64 = 8_000; // whole per-host budget
-const DEFAULT_EXPIRY_DAYS: i64 = 60;        // ~ SharpHound --ComputerExpiryDays
-
 /// Entry point called by run_modules.
 pub async fn run(
     args: &Options,
@@ -56,7 +51,7 @@ pub async fn run(
     // The host is the computer FQDN (properties.name); no fqdn->ip lookup.
     let targets: Vec<(String, String)> = computers
         .iter()
-        .filter(|c| c.is_active(DEFAULT_EXPIRY_DAYS))
+        .filter(|c| c.is_active(args.computer_expiry_days))
         .map(|c| (c.properties().name().clone(), c.object_identifier().clone()))
         .collect();
 
@@ -66,7 +61,9 @@ pub async fn run(
     }
 
     // Auth material, computed once and cloned per host.
-    let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
+    let sem = Arc::new(Semaphore::new(args.workers));
+    let smb_timeout = args.smb_timeout;
+    let host_timeout = args.host_timeout;
     // SMB sign-in identity: the account's own domain from -u, else --domain.
     let (signin_domain, user) = smb_identity(args.username.as_deref().unwrap_or_default(), &args.domain);
     let password = args.password.clone().unwrap_or_default();
@@ -99,11 +96,12 @@ pub async fn run(
                 let outcome = probe_host(
                     &host, &signin_domain, &user, &password,
                     nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc,
+                    smb_timeout, host_timeout,
                 ).await;
                 (oid, outcome)
             }
         })
-        .buffer_unordered(DEFAULT_CONCURRENCY)
+        .buffer_unordered(args.workers)
         .collect()
         .await;
 
@@ -149,9 +147,11 @@ async fn probe_host(
     nt_hash: Option<&[u8; 16]>,
     kerberos_ccache: Option<&str>,
     kdc: &str,
+    smb_timeout: Duration,
+    host_timeout: Duration,
 ) -> Outcome {
     // SharpHound-style reachability pre-check: 445 open within budget.
-    if !is_reachable(host, DEFAULT_PORT_TIMEOUT_MS).await {
+    if !is_reachable(host, smb_timeout).await {
         trace!("[{host}] 445/tcp unreachable - skip");
         return Outcome::Unreachable(format!("{host}: 445/tcp unreachable"));
     }
@@ -186,7 +186,7 @@ async fn probe_host(
     };
 
     // Whole-host budget so a slow-but-open host can't stall a worker.
-    match timeout(Duration::from_millis(DEFAULT_HOST_TIMEOUT_MS), work).await {
+    match timeout(host_timeout, work).await {
         Ok(outcome) => outcome,
         Err(_) => Outcome::Unreachable(format!("{host}: per-host timeout")),
     }

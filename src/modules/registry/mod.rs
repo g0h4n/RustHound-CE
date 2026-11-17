@@ -32,8 +32,6 @@ use crate::args::Options;
 use crate::objects::enterpriseca::EnterpriseCA;
 use crate::transport::smb::{nt_hash_from_str, smb_identity};
 
-const DEFAULT_CONCURRENCY: usize = 10; // bounded parallel CAs (~ SharpHound --Throttle), as session/webclient
-const DEFAULT_PORT_TIMEOUT_MS: u64 = 1_500; // 445 reachability pre-check budget, as session/webclient
 const DEFAULT_PER_CA_TIMEOUT_MS: u64 = 30_000; // whole per-CA budget; larger than the sibling modules' per-host probe timeout because it also covers the sealed MS-RRP round-trips plus the one Remote Registry retry
 const WINREG_RETRY_DELAY_MS: u64 = 3_000; // STATUS_PIPE_NOT_AVAILABLE (0xc00000ac): Remote Registry is trigger-starting; wait then retry once
 
@@ -102,7 +100,8 @@ pub async fn run(args: &Options, cas: &mut [EnterpriseCA]) -> Result<(), Box<dyn
     );
 
     // Read with bounded concurrency; order is preserved by join_all.
-    let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
+    let sem = Arc::new(Semaphore::new(args.workers));
+    let smb_timeout = args.smb_timeout;
     let reads = future::join_all(targets.into_iter().map(|(idx, host, ca_name)| {
         let (sem, signin_domain, user, password) =
             (sem.clone(), signin_domain.clone(), user.clone(), password.clone());
@@ -110,8 +109,7 @@ pub async fn run(args: &Options, cas: &mut [EnterpriseCA]) -> Result<(), Box<dyn
             let _permit = sem.acquire().await.unwrap();
             trace!("[careg] [{host}] permit acquired, reading CA '{ca_name}'");
             let reads =
-                careg::collect(&host, &signin_domain, &user, &password, nt_hash.as_ref(), &ca_name)
-                    .await;
+                careg::collect(&host, &signin_domain, &user, &password, nt_hash.as_ref(), &ca_name, smb_timeout).await;
             (idx, reads)
         }
     }))
