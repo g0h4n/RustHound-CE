@@ -348,6 +348,13 @@ struct LdapArgs {
     s_ntlm_password: Option<String>,
 }
 
+/// What the debug summary shows for the password: whether one is set,
+/// never the password itself. `"not set"` is the placeholder used when
+/// there is none.
+fn password_state(password: &str) -> &'static str {
+    if password.is_empty() || password == "not set" { "(not set)" } else { "(set)" }
+}
+
 /// Function to prepare LDAP arguments.
 #[allow(clippy::too_many_arguments)]
 fn ldap_constructor(
@@ -438,7 +445,7 @@ fn ldap_constructor(
     } else if use_ntlm {
         debug!("Auth: NTLM pass-the-hash");
     } else {
-        debug!("Password: {}", _s_password);
+        debug!("Password: {}", password_state(&_s_password));
     }
     debug!("DC: {:?}", s_dc);
     debug!("Kerberos: {:?}", kerberos);
@@ -592,6 +599,13 @@ mod tests {
         assert_eq!(range_high("member;range=3000-*"), None); // final chunk
         assert_eq!(range_high("member"), None); // not ranged
         assert_eq!(range_high("member;range=bad"), None); // unparsable
+    }
+
+    #[test]
+    fn password_state_never_shows_the_password() {
+        assert_eq!(password_state("S3cret!"), "(set)");
+        assert_eq!(password_state("not set"), "(not set)");
+        assert_eq!(password_state(""), "(not set)");
     }
 
     #[test]
