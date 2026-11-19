@@ -1,6 +1,6 @@
 //! Launch and end banners
 use colored::*;
-use crate::utils::date::{return_current_date,return_current_time};
+use crate::{args::RUSTHOUND_VERSION, utils::date::{return_current_date,return_current_time}};
 use indicatif::{ProgressBar, ProgressStyle};
 
 /// Banner when RustHound-CE start.
@@ -16,7 +16,7 @@ pub fn print_banner() {
         return_current_time(),
         return_current_date()
     );
-    println!("Powered by {}","@g0h4n_0".bold());
+    println!("Version {} powered by {}",RUSTHOUND_VERSION.bold(),"@g0h4n_0".bold());
     println!("{}\n","---------------------------------------------------".clear().bold());
 }
 
