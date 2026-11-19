@@ -16,6 +16,7 @@
   - [Pass-the-Certificate](#pass-the-certificate-certificate-authentication)
   - [Using disk instead of memory](#using-disk-instead-of-memory)
   - [Module FQDN resolver](#module-fqdn-resolver)
+  - [Collection Tunning and OPSEC](#collection-tuning-and-opsec)
 
 <hr />
 
@@ -256,8 +257,16 @@ OPTIONAL FLAGS:
           Buffer size to use when caching [default: 1000]
       --resume
           Resume the collection from the last saved state
-      --ldap-timeout <MS>
-          Connection timeout in milliseconds for the directory transport over LDAP. Useful over slow links such as SOCKS/proxychains [default: 10000]
+
+COLLECTION TUNING / OPSEC:
+      --ldap-timeout <MS>            Connection timeout in milliseconds for the directory transport over LDAP. Useful over slow links such as SOCKS/proxychains [default: 10000]
+      --smb-timeout <MS>             TCP/445 reachability pre-check timeout, in milliseconds [default: 1000]
+      --host-timeout <MS>            Whole per-host budget (connect + auth + probe), in milliseconds [default: 8000]
+      --computer-expiry-days <DAYS>  Only probe computers whose pwdLastSet is within N days (SharpHound ComputerExpiryDays) [default: 60]
+      --workers <N>                  Max concurrent in-flight SMB sessions (bounded stream) [default: 50]
+      --throttle <MS>                Base delay before each SMB/RPC connection, in milliseconds (SharpHound --Throttle) [default: 0]
+      --jitter <MS>                  Random extra delay added on top of --throttle, in milliseconds (SharpHound --Jitter) [default: 0]
+      --opsec                        Stealth preset: shuffle target order, lower --workers, add --throttle/--jitter (explicit CLI values win)
 
 OPTIONAL MODULES:
       --fqdn-resolver  Use fqdn-resolver module to get computers IP address
@@ -410,4 +419,39 @@ rusthound-ce -d essos.local --ldaps -u 'daenerys.targaryen@essos.local' -p 'Burn
 rusthound-ce.exe -d essos.local -f meereen -o output --fqdn-resolver -z
 # Windows simple bind connection username:password and FQDN resolver module and TCP DNS request and custom name server (do not use single or double quotes with cmd.exe)
 rusthound-ce.exe -d essos.local -u daenerys.targaryen@essos.local -p BurnThemAll! -o output -z --fqdn-resolver --tcp-dns --name-server 192.168.56.12 
+```
+
+## Collection tuning and OPSEC
+
+These options tune the **SMB/RPC modules** (sessions, local groups, WebClient,
+CA registry), while `--ldap-timeout` tunes the directory connection itself.
+They help over slow or filtered links, on large domains, and when you need to
+stay quiet. `--opsec` is a preset that lowers `--workers` to 1 (fully serial),
+adds a `--throttle`/`--jitter` delay and shuffles the target order; any value
+you pass explicitly on the CLI overrides the preset.
+
+```bash
+# Slow link (SOCKS/proxychains): raise the LDAP connection timeout
+proxychains4 rusthound-ce -d ESSOS.LOCAL -u 'daenerys.targaryen' -p 'BurnThemAll!' -z --ldap-timeout 30000
+
+# Large domain, go faster: more parallel SMB sessions + shorter 445 pre-check
+rusthound-ce -d ESSOS.LOCAL -u 'daenerys.targaryen' -p 'BurnThemAll!' -z --workers 100 --smb-timeout 800
+
+# High-latency / tunneled: fewer workers, longer 445 pre-check and per-host budget
+rusthound-ce -d ESSOS.LOCAL -u 'daenerys.targaryen' -p 'BurnThemAll!' -z --workers 10 --smb-timeout 3000 --host-timeout 20000
+
+# Pace outbound connections (SharpHound-style): 1s base delay + up to 0.5s jitter
+rusthound-ce -d ESSOS.LOCAL -u 'daenerys.targaryen' -p 'BurnThemAll!' -z --throttle 1000 --jitter 500
+
+# Only probe computers whose pwdLastSet is within 30 days (skip stale hosts)
+rusthound-ce -d ESSOS.LOCAL -u 'daenerys.targaryen' -p 'BurnThemAll!' -z --computer-expiry-days 30
+
+# Stealth preset: 1 worker, shuffled order, throttle + jitter
+rusthound-ce -d ESSOS.LOCAL -u 'daenerys.targaryen' -p 'BurnThemAll!' -z --opsec
+
+# Stealth preset but allow a bit of parallelism (explicit --workers wins over the preset)
+rusthound-ce -d ESSOS.LOCAL -u 'daenerys.targaryen' -p 'BurnThemAll!' -z --opsec --workers 3
+
+# Stealth preset over a SOCKS tunnel, with a longer LDAP connection timeout
+proxychains4 rusthound-ce -d ESSOS.LOCAL -u 'daenerys.targaryen' -p 'BurnThemAll!' -z --opsec --ldap-timeout 30000
 ```

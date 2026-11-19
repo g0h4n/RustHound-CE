@@ -30,10 +30,8 @@ use tokio::sync::Semaphore;
 
 use crate::args::Options;
 use crate::objects::enterpriseca::EnterpriseCA;
-use crate::transport::smb::{nt_hash_from_str, smb_identity};
+use crate::transport::smb::{nt_hash_from_str, smb_identity, throttle_delay};
 
-const DEFAULT_CONCURRENCY: usize = 10; // bounded parallel CAs (~ SharpHound --Throttle), as session/webclient
-const DEFAULT_PORT_TIMEOUT_MS: u64 = 1_500; // 445 reachability pre-check budget, as session/webclient
 const DEFAULT_PER_CA_TIMEOUT_MS: u64 = 30_000; // whole per-CA budget; larger than the sibling modules' per-host probe timeout because it also covers the sealed MS-RRP round-trips plus the one Remote Registry retry
 const WINREG_RETRY_DELAY_MS: u64 = 3_000; // STATUS_PIPE_NOT_AVAILABLE (0xc00000ac): Remote Registry is trigger-starting; wait then retry once
 
@@ -68,12 +66,18 @@ pub async fn run(args: &Options, cas: &mut [EnterpriseCA]) -> Result<(), Box<dyn
 
     // Targets in CA order (so the results fold straight back by position), with
     // the empty-dnshostname CAs dropped: there is nothing to connect to.
-    let targets: Vec<(usize, String, String)> = cas
+    let mut targets: Vec<(usize, String, String)> = cas
         .iter()
         .enumerate()
         .filter(|(_, ca)| !ca.dns_host().is_empty())
         .map(|(i, ca)| (i, ca.dns_host().to_string(), ca.caname().to_string()))
         .collect();
+    // Each target carries its original CA index, so results still fold back by
+    // index after an --opsec shuffle of the probe order.
+    if args.opsec {
+        use rand::seq::SliceRandom;
+        targets.shuffle(&mut rand::thread_rng());
+    }
 
     if targets.is_empty() {
         return Ok(());
@@ -102,16 +106,19 @@ pub async fn run(args: &Options, cas: &mut [EnterpriseCA]) -> Result<(), Box<dyn
     );
 
     // Read with bounded concurrency; order is preserved by join_all.
-    let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
+    let sem = Arc::new(Semaphore::new(args.workers));
+    let smb_timeout = args.smb_timeout;
+    let throttle = args.throttle;
+    let jitter = args.jitter;
     let reads = future::join_all(targets.into_iter().map(|(idx, host, ca_name)| {
         let (sem, signin_domain, user, password) =
             (sem.clone(), signin_domain.clone(), user.clone(), password.clone());
         async move {
             let _permit = sem.acquire().await.unwrap();
+            throttle_delay(throttle, jitter).await;
             trace!("[careg] [{host}] permit acquired, reading CA '{ca_name}'");
             let reads =
-                careg::collect(&host, &signin_domain, &user, &password, nt_hash.as_ref(), &ca_name)
-                    .await;
+                careg::collect(&host, &signin_domain, &user, &password, nt_hash.as_ref(), &ca_name, smb_timeout).await;
             (idx, reads)
         }
     }))

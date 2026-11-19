@@ -243,18 +243,37 @@ pub fn smb_identity(raw: &str, default_domain: &str) -> (String, String) {
 /// `port_timeout_ms`? Run before any SMB work so a dead host is skipped quickly
 /// instead of eating the full connect budget. Shared by the sessions,
 /// local-group and webclient modules.
-pub async fn is_reachable(host: &str, port_timeout_ms: u64) -> bool {
+pub async fn is_reachable(host: &str, port_timeout_ms: Duration) -> bool {
     let target = format!("{host}:445");
-    trace!("[{host}] is_reachable: begin, target={target}, budget={port_timeout_ms}ms");
+    trace!("[{host}] is_reachable: begin, target={target}, budget={port_timeout_ms:?}ms");
     trace!("[{host}] is_reachable: >>> TcpStream::connect({target}) (name resolution happens here)");
     let outcome = timeout(
-        Duration::from_millis(port_timeout_ms),
+        port_timeout_ms,
         TcpStream::connect(target),
     )
     .await;
     let reachable = matches!(outcome, Ok(Ok(_)));
     trace!("[{host}] is_reachable: <<< returned, reachable={reachable}");
     reachable
+}
+
+/// SharpHound-style pacing: sleep `throttle_ms` plus a random extra in
+/// `0..=jitter_ms` before a connection, to space out and de-correlate outbound
+/// SMB/RPC connections. A no-op when both are 0. Call it after acquiring the
+/// concurrency permit, just before contacting a host.
+pub async fn throttle_delay(throttle_ms: u64, jitter_ms: u64) {
+    // Compute the random part fully before the await so the (non-Send) RNG is
+    // dropped and never held across the sleep.
+    let extra = if jitter_ms > 0 {
+        use rand::Rng;
+        rand::thread_rng().gen_range(0..=jitter_ms)
+    } else {
+        0
+    };
+    let total = throttle_ms + extra;
+    if total > 0 {
+        tokio::time::sleep(Duration::from_millis(total)).await;
+    }
 }
 
 #[cfg(test)]

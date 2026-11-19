@@ -9,7 +9,7 @@ pub mod banner;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use env_logger::Builder;
-use log::{error, info, trace};
+use log::{error, trace};
 
 use rusthound_ce::{args, api::run_collection, transport::connect, utils};
 use std::error::Error;
@@ -39,8 +39,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .filter_level(log::LevelFilter::Error)
         .init();
 
-    info!("Verbosity level: {:?}", common_args.verbose);
-    info!("Collection method: {:?}", common_args.collection_method);
+    // Dump every parsed argument for info, debug and trace
+    common_args.trace_values();
 
     // 1) Resume reads straight from the local cache, so no DC connection is
     //    needed. Otherwise connect + authenticate over the selected transport

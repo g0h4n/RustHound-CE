@@ -71,8 +71,9 @@ pub async fn run_modules(
             .iter()
             .map(|ca| (ca.dns_host().to_string(), ca.caname().to_string()))
             .collect();
+        let http_timeout = common_args.http_timeout;
         let probes = future::join_all(targets.into_iter().map(|(host, ca_name)| {
-            tokio::task::spawn_blocking(move || probe_enterpriseca_esc8(&host, &ca_name))
+            tokio::task::spawn_blocking(move || probe_enterpriseca_esc8(&host, &ca_name, http_timeout))
         }))
         .await;
         for (ca, probe) in ad.enterprisecas.iter_mut().zip(probes) {

@@ -41,7 +41,7 @@ use dcerpc::rrp::{RegistryClient, RegistrySession};
 use dcerpc::srvsvc::SrvsvcClient;
 use dcerpc::wkssvc::{WkstaUser, WkstaUserClient};
 use smb2_client::SmbClient;
-use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_identity, SmbAuth};
+use crate::transport::smb::{connect_ipc, is_reachable, open_rpc_pipe, smb_identity, throttle_delay, SmbAuth};
 use crate::modules::registry::{rrp_bind_unavailable, RRP_NEEDS_SECRET};
 
 use crate::args::{CollectionMethod, Options};
@@ -50,10 +50,6 @@ use crate::objects::common::{Session, UserComputerSession};
 use crate::objects::computer::Computer;
 use crate::objects::user::User;
 
-const DEFAULT_CONCURRENCY: usize = 10;      // ~ SharpHound --Throttle
-const DEFAULT_PORT_TIMEOUT_MS: u64 = 1_500; // 445 pre-check budget
-const DEFAULT_HOST_TIMEOUT_MS: u64 = 8_000; // whole per-host RPC budget
-const DEFAULT_EXPIRY_DAYS: i64 = 60;        // ~ SharpHound --ComputerExpiryDays
 const ERROR_ACCESS_DENIED: u32 = 5;
 const ERROR_MORE_DATA: u32 = 234;
 
@@ -161,12 +157,16 @@ pub async fn run(
 
     // 2) Select ACTIVE targets only (enabled + pwdLastSet within the expiry window).
     //    The host is the computer FQDN (properties.name); no fqdn->ip lookup.
-    let expiry_days = DEFAULT_EXPIRY_DAYS;
-    let targets: Vec<(String, String)> = computers
+    let expiry_days = args.computer_expiry_days;
+    let mut targets: Vec<(String, String)> = computers
         .iter()
         .filter(|c| c.is_active(expiry_days))
         .map(|c| (c.properties().name().clone(), c.object_identifier().clone()))
         .collect();
+    if args.opsec {
+        use rand::seq::SliceRandom;
+        targets.shuffle(&mut rand::thread_rng());
+    }
 
     info!("[sessions] {} active target(s) after expiry/enabled filter", targets.len());
     for (h, _) in &targets {
@@ -174,7 +174,11 @@ pub async fn run(
     }
 
     // 3) Enumerate with bounded concurrency (throttle) instead of a serial loop.
-    let sem = Arc::new(Semaphore::new(DEFAULT_CONCURRENCY));
+    let sem = Arc::new(Semaphore::new(args.workers));
+    let smb_timeout = args.smb_timeout;
+    let host_timeout = args.host_timeout;
+    let throttle = args.throttle;
+    let jitter = args.jitter;
     // SMB sign-in identity: the account's own domain from -u, else --domain.
     let (signin_domain, user) = smb_identity(args.username.as_deref().unwrap_or_default(), &args.domain);
     let password = args.password.clone().unwrap_or_default();
@@ -203,7 +207,7 @@ pub async fn run(
               targets.len());
     }
 
-    trace!("[sessions] starting concurrent enumeration (concurrency={DEFAULT_CONCURRENCY})");
+    trace!("[sessions] starting concurrent enumeration (concurrency={})", args.workers);
     let findings: Vec<HostFindings> = stream::iter(targets)
         .map(|(host, computer_sid)| {
             let (sem, signin_domain, user, password, method) =
@@ -214,16 +218,18 @@ pub async fn run(
             async move {
                 trace!("[sessions] [{host}] task scheduled, awaiting concurrency permit");
                 let _permit = sem.acquire().await.unwrap();
+                throttle_delay(throttle, jitter).await;
                 trace!("[sessions] [{host}] permit acquired, entering enumerate_host");
                 let hf = enumerate_host(
                     &host, computer_sid, &signin_domain, &user, &password,
                     nt_hash.as_ref(), kerberos_ccache.as_deref(), &kdc, &method, skip_reason,
+                    smb_timeout, host_timeout,
                 ).await;
                 trace!("[sessions] [{host}] enumerate_host returned ({} error(s))", hf.errors().len());
                 hf
             }
         })
-        .buffer_unordered(DEFAULT_CONCURRENCY)
+        .buffer_unordered(args.workers)
         .collect()
         .await;
 
@@ -251,6 +257,8 @@ async fn enumerate_host(
     kdc: &str,
     method: &CollectionMethod,
     registry_skip: Option<&str>,
+    smb_timeout: Duration,
+    host_timeout: Duration,
 ) -> HostFindings {
     let mut hf = HostFindings::new(computer_sid, method);
     if let Some(reason) = registry_skip {
@@ -264,7 +272,7 @@ async fn enumerate_host(
     trace!("[sessions] [{host}] enumerate_host: begin, running 445 pre-check");
 
     // SharpHound-style reachability pre-check: 445 open within budget
-    if !is_reachable(host, DEFAULT_PORT_TIMEOUT_MS).await {
+    if !is_reachable(host, smb_timeout).await {
         trace!("[{host}] 445/tcp unreachable - skip");
         hf.fail_pending(&format!("{host}: 445/tcp unreachable"));
         return hf;
@@ -319,7 +327,7 @@ async fn enumerate_host(
     };
 
     // whole-host budget so a slow-but-open host can't stall a worker
-    if timeout(Duration::from_millis(DEFAULT_HOST_TIMEOUT_MS), work).await.is_err() {
+    if timeout(host_timeout, work).await.is_err() {
         hf.fail_pending(&format!("{host}: per-host timeout"));
     }
     hf
@@ -606,8 +614,9 @@ mod tests {
 
     async fn enumerate_without_secret(method: &CollectionMethod) -> HostFindings {
         enumerate_host(NO_HOST, COMPUTER_SID.to_string(), "EXAMPLE", "alice", "", None,
-                       None, "dc01.example.local", method, registry_skip(method, "", None)).await
-    }
+                       None, "dc01.example.local", method, registry_skip(method, "", None),
+                       Duration::from_millis(1_000), Duration::from_millis(8_000)).await
+     }
 
     #[tokio::test]
     async fn registry_only_without_secret_contacts_no_host() {
