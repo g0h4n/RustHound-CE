@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.5.52 - 2026-11-19
+
+### Added
+- Collection tuning and OPSEC controls ([#123](https://github.com/g0h4n/RustHound-CE/pull/123)). New `--workers`, `--throttle`, `--jitter`, `--smb-timeout`, `--host-timeout`, `--http-timeout` and `--computer-expiry-days` flags replace the hardcoded SMB/RPC and ADCS ESC8 concurrency and timeout constants that were duplicated across the `session`, `localgroup`, `webclient` and `registry` modules. A new `--opsec` stealth preset shuffles the target order, lowers `--workers`, adds `--throttle`/`--jitter` and swaps the default LDAP filter to `(objectGUID=*)` (logically equivalent to `(objectClass=*)` but without the canonical collector signature) — applying these only to the flags not set explicitly on the CLI, which always win.
+- `--ldap-timeout` flag (milliseconds, default 10000) to replace the hardcoded 10-second LDAP connection timeout, which failed over high-latency links such as SOCKS tunnels or VPN pivots ([#119](https://github.com/g0h4n/RustHound-CE/pull/119)).
+- Startup argument dump: every parsed argument is now logged before connecting, each at its level (INFO / DEBUG / TRACE). Secrets (password, hashes, pfx-pass) are redacted to `[REDACTED]` / `not set` and never printed in clear ([#123](https://github.com/g0h4n/RustHound-CE/pull/123)).
+- Display the RustHound-CE version in the startup banner, next to the credit line, so the running build is visible in console output and bug reports ([#124](https://github.com/g0h4n/RustHound-CE/pull/124)).
+
+### Fixed
+- The LDAP password was printed in clear text when running with the verbose flag; the connection summary now logs only whether a password is set, through a small tested helper ([#117](https://github.com/g0h4n/RustHound-CE/issues/117)). Thanks to [@marbas207](https://github.com/marbas207) ([#121](https://github.com/g0h4n/RustHound-CE/pull/121)).
+
+### Changed
+- Switched the Docker base image from Debian bullseye to bookworm, as the bullseye repositories have reached end of life ([#122](https://github.com/g0h4n/RustHound-CE/pull/122)). Thanks to [@thankgod4rob](https://github.com/thankgod4rob).
+- Removed a redundant transport log line (LDAP/ADWS) now covered by the startup argument dump ([#124](https://github.com/g0h4n/RustHound-CE/pull/124)).
+- Default SMB concurrency raised from 10 to 50 (`--workers`) and the TCP/445 reachability pre-check shortened from 1500 ms to 1000 ms (`--smb-timeout`); the ADCS ESC8 web-enrollment probe runs on a 2000 ms budget by default (`--http-timeout`). Any of these can be overridden on the CLI ([#123](https://github.com/g0h4n/RustHound-CE/pull/123)).
+
 ## 2.5.51 - 2026-11-07
 
 ### Fixed

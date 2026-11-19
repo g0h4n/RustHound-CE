@@ -84,3 +84,4 @@ More information and examples with how to compile RustHound-CE or how to use Rus
 [![](https://github.com/rtpt-romankarwacik.png?size=50)](https://github.com/rtpt-romankarwacik)
 [![](https://github.com/marbas207.png?size=50)](https://github.com/marbas207)
 [![](https://github.com/n3oari.png?size=50)](https://github.com/n3oari)
+[![](https://github.com/thankgod4rob.png?size=50)](https://github.com/thankgod4rob)
