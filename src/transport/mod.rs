@@ -18,7 +18,7 @@
 //! `--transport ldap|soap`.
 
 use async_trait::async_trait;
-use log::{info, trace};
+use log::trace;
 use std::error::Error;
 
 use crate::args::{Options, Transport};
@@ -59,11 +59,9 @@ pub trait DirectoryTransport: Send {
 pub async fn connect(options: &Options) -> Result<Box<dyn DirectoryTransport>, Box<dyn Error>> {
     match options.transport {
         Transport::Soap => {
-            info!("Transport: ADWS (SOAP, tcp/9389)");
             Ok(Box::new(adws::adws_auth(options).await?))
         }
         Transport::Ldap => {
-            info!("Transport: LDAP");
             Ok(Box::new(ldap::LdapTransport(ldap::ldap_auth(options).await?)))
         }
     }
