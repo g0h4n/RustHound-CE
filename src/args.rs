@@ -1,4 +1,5 @@
 //! Parsing arguments
+use log::{info,debug,trace};
 #[cfg(not(feature = "noargs"))]
 use clap::{Arg, ArgAction, value_parser, Command};
 
@@ -41,6 +42,7 @@ pub struct Options {
     pub ldap_timeout: std::time::Duration,
     pub smb_timeout: std::time::Duration,
     pub host_timeout: std::time::Duration,
+    pub http_timeout: std::time::Duration,
     pub computer_expiry_days: i64,
     pub workers: usize,
     pub throttle: u64,
@@ -53,6 +55,53 @@ impl Options {
     /// are available, so SMB-based modules must be skipped).
     pub fn uses_cert(&self) -> bool {
         self.pfx.is_some() || self.crt.is_some()
+    }
+
+    /// Log every parsed argument 
+    pub fn trace_values(&self) {
+        let secret = |o: &Option<String>| {
+            if o.as_deref().is_some_and(|s| !s.is_empty()) { "[REDACTED]" } else { "not set" }
+        };
+
+        info!("Verbosity level: {:?}", self.verbose);
+        info!("Collection method: {:?}", self.collection_method);
+        // Essentials, shown by default.
+        info!("Domain: {:?}", self.domain);
+        info!("Username: {:?}", self.username);
+        info!("Output path: {:?}", self.path);
+        info!("Transport: {:?}", self.transport);
+
+        // Connection details, shown at -v.
+        debug!("IP: {:?}", self.ip);
+        debug!("Port: {:?}", self.port);
+        debug!("LDAP FQDN: {:?}", self.ldapfqdn);
+        debug!("Name server: {:?}", self.name_server);
+        debug!("LDAPS: {}", self.ldaps);
+        debug!("Kerberos: {}", self.kerberos);
+        debug!("Password: {}", secret(&self.password));
+        debug!("Hashes: {}", secret(&self.hashes));
+        debug!("FQDN resolver: {}", self.fqdn_resolver);
+        debug!("Zip: {}", self.zip);
+        debug!("Cache: {}", self.cache);
+        debug!("Resume: {}", self.resume);
+        debug!("OPSEC: {}", self.opsec);
+        debug!("LDAP filter: {:?}", self.ldap_filter);
+
+        // Fine-grained tuning, shown at -vv.
+        trace!("PFX: {:?}", self.pfx);
+        trace!("PFX pass: {}", secret(&self.pfx_pass));
+        trace!("CRT: {:?}", self.crt);
+        trace!("Key: {:?}", self.key);
+        trace!("DNS TCP: {}", self.dns_tcp);
+        trace!("Cache buffer size: {}", self.cache_buffer_size);
+        trace!("LDAP timeout: {:?}", self.ldap_timeout);
+        trace!("SMB timeout: {:?}", self.smb_timeout);
+        trace!("Host timeout: {:?}", self.host_timeout);
+        trace!("HTTP timeout: {:?}", self.http_timeout);
+        trace!("Workers: {}", self.workers);
+        trace!("Throttle: {}", self.throttle);
+        trace!("Jitter: {}", self.jitter);
+        trace!("Computer expiry days: {}", self.computer_expiry_days);
     }
 }
 
@@ -94,6 +143,7 @@ pub const RUSTHOUND_VERSION: &str = env!("CARGO_PKG_VERSION");
 const OPSEC_WORKERS: usize = 1;         // far fewer concurrent SMB sessions
 const OPSEC_THROTTLE_MS: u64 = 1_000;   // base delay before each connection
 const OPSEC_JITTER_MS: u64 = 1_000;     // random extra delay on top of throttle
+const OPSEC_LDAP_FILTER: &str = "(!(RustHoundCEFilter=*))";
 
 #[cfg(not(feature = "noargs"))]
 fn cli() -> Command {
@@ -296,6 +346,14 @@ fn cli() -> Command {
         .value_parser(value_parser!(u64))
         .default_value("8000")
     )
+    .arg(Arg::new("http_timeout")
+        .long("http-timeout")
+        .help("ADCS ESC8 web-enrollment probe timeout (TCP + HTTP + HTTPS), in milliseconds")
+        .required(false)
+        .value_name("MS")
+        .value_parser(value_parser!(u64))
+        .default_value("2000")
+    )
     .arg(Arg::new("computer_expiry_days")
         .long("computer-expiry-days")
         .help("Only probe computers whose pwdLastSet is within N days (SharpHound ComputerExpiryDays)")
@@ -440,7 +498,10 @@ pub fn extract_args() -> Options {
         eprintln!("-c SOAPOnly or -c ADWSOnly requires --transport soap or -t adws");
         std::process::exit(1);
     }
-    let ldap_filter = matches.get_one::<String>("ldap-filter").map(|s| s.as_str()).unwrap_or("(objectClass=*)");
+    let mut ldap_filter = matches
+        .get_one::<String>("ldap-filter")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "(objectClass=*)".to_string());
     let cache = matches.get_flag("cache");
     let cache_buffer_size = matches
         .get_one::<usize>("cache_buffer")
@@ -456,6 +517,9 @@ pub fn extract_args() -> Options {
     let host_timeout = std::time::Duration::from_millis(
         matches.get_one::<u64>("host_timeout").copied().unwrap_or(8_000),
     );
+    let http_timeout = std::time::Duration::from_millis(
+        matches.get_one::<u64>("http_timeout").copied().unwrap_or(2_000),
+    );
     let computer_expiry_days = matches.get_one::<i64>("computer_expiry_days").copied().unwrap_or(60);
     let mut workers = matches.get_one::<usize>("workers").copied().unwrap_or(50).max(1);
     let mut throttle = matches.get_one::<u64>("throttle").copied().unwrap_or(0);
@@ -467,6 +531,7 @@ pub fn extract_args() -> Options {
         if !is_explicit("workers")  { workers = OPSEC_WORKERS; }
         if !is_explicit("throttle") { throttle = OPSEC_THROTTLE_MS; }
         if !is_explicit("jitter")   { jitter = OPSEC_JITTER_MS; }
+        if !is_explicit("ldap-filter") { ldap_filter = OPSEC_LDAP_FILTER.to_string(); }
     }
 
     // Return all
@@ -492,13 +557,14 @@ pub fn extract_args() -> Options {
         key,
         zip: z,
         verbose: v,
-        ldap_filter: ldap_filter.to_string(),
+        ldap_filter,
         cache,
         cache_buffer_size,
         resume,
         ldap_timeout,
         smb_timeout,
         host_timeout,
+        http_timeout,
         computer_expiry_days,
         workers,
         throttle,
@@ -575,6 +641,7 @@ pub fn auto_args() -> Options {
         ldap_timeout: std::time::Duration::from_secs(10),
         smb_timeout: std::time::Duration::from_secs(1),
         host_timeout: std::time::Duration::from_secs(8),
+        http_timeout: std::time::Duration::from_secs(2),
         computer_expiry_days: 60,
         workers: 50,
         throttle: 0,

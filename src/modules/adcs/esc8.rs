@@ -53,16 +53,8 @@ const MV_AV_EOL: u16 = 0x0000;
 /// `MsvAvChannelBindings`, present with non-zero length when EPA is required.
 const MV_AV_CHANNEL_BINDINGS: u16 = 0x000A;
 
-// Timeouts
-
-/// TCP connect timeout for the port-reachability pre-check.
-const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
-/// Connect timeout for the reqwest clients.
-const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
-/// Total request timeout, plain HTTP.
-const HTTP_TIMEOUT: Duration = Duration::from_secs(5);
-/// Total request timeout, HTTPS (TLS handshake included).
-const HTTPS_TIMEOUT: Duration = Duration::from_secs(8);
+// ESC8 probe timeout (TCP pre-check + HTTP/HTTPS connect and request) comes
+// from the CLI --http-timeout and is threaded through as `timeout`.
 
 // Minimal NTLM Type 1 (Negotiate)
 
@@ -292,9 +284,9 @@ pub struct Esc8Result {
 /// endpoints, so the caller can tell "probed, nothing found" apart from
 /// "never probed". CES endpoints are added only when `ca_name` is non-empty
 /// (there is no vdir path to build otherwise).
-pub fn check_esc8(host: &str, ca_name: &str) -> Esc8Result {
-    let http_outcome  = probe_http(host, &probe_url("http", host));
-    let https_outcome = probe_https(host, &probe_url("https", host));
+pub fn check_esc8(host: &str, ca_name: &str, timeout: Duration) -> Esc8Result {
+    let http_outcome  = probe_http(host, &probe_url("http", host), timeout);
+    let https_outcome = probe_https(host, &probe_url("https", host), timeout);
 
     let http  = outcome_status(&http_outcome);
     let https = outcome_status(&https_outcome);
@@ -345,7 +337,7 @@ pub fn check_esc8(host: &str, ca_name: &str) -> Esc8Result {
         for auth in CES_AUTH_TYPES {
             // HTTP (rare; relay-able outright if NTLM is offered there).
             let http_url     = ces_url("http", host, ca_name, auth);
-            let http_outcome = probe_http(host, &http_url);
+            let http_outcome = probe_http(host, &http_url, timeout);
             if outcome_status(&http_outcome) == WebEnrollmentStatus::Vulnerable {
                 vulnerable = true;
                 warn!(
@@ -361,7 +353,7 @@ pub fn check_esc8(host: &str, ca_name: &str) -> Esc8Result {
 
             // HTTPS (CES default): check EPA / Channel Binding.
             let https_url     = ces_url("https", host, ca_name, auth);
-            let https_outcome = probe_https(host, &https_url);
+            let https_outcome = probe_https(host, &https_url, timeout);
             if outcome_status(&https_outcome) == WebEnrollmentStatus::Vulnerable {
                 vulnerable = true;
                 warn!(
@@ -402,7 +394,7 @@ enum PortState {
 ///
 /// Run before the HTTP request so that "nothing is listening" can be reported as
 /// `NotVulnerable_PortInaccessible` rather than as a transport failure.
-fn check_port(host: &str, port: u16) -> PortState {
+fn check_port(host: &str, port: u16, timeout: Duration) -> PortState {
     let addrs = match (host, port).to_socket_addrs() {
         Ok(a) => a.collect::<Vec<_>>(),
         Err(e) => {
@@ -418,7 +410,7 @@ fn check_port(host: &str, port: u16) -> PortState {
     }
 
     for addr in &addrs {
-        match TcpStream::connect_timeout(addr, TCP_CONNECT_TIMEOUT) {
+        match TcpStream::connect_timeout(addr, timeout) {
             Ok(_) => {
                 debug!("ESC8 port check {}:{} open ({})", host, port, addr);
                 return PortState::Open;
@@ -439,18 +431,18 @@ fn check_port(host: &str, port: u16) -> PortState {
 ///
 /// A `404` means IIS is up but web enrollment is not installed: the probe cannot
 /// conclude, so it is reported as not collected, like SharpHound does.
-fn probe_http(host: &str, url: &str) -> ProbeOutcome {
+fn probe_http(host: &str, url: &str, timeout: Duration) -> ProbeOutcome {
     debug!("ESC8 HTTP probe: {}", url);
 
-    match check_port(host, 80) {
+    match check_port(host, 80, timeout) {
         PortState::Open => {}
         PortState::Closed => return ProbeOutcome::PortClosed,
         PortState::Unresolved(reason) => return ProbeOutcome::Failed(reason),
     }
 
     let client = match Client::builder()
-        .timeout(HTTP_TIMEOUT)
-        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(timeout)
+        .connect_timeout(timeout)
         .redirect(reqwest::redirect::Policy::limited(3))
         .build()
     {
@@ -507,10 +499,10 @@ fn probe_http(host: &str, url: &str) -> ProbeOutcome {
 /// Sends a minimal NTLM Type 1 Negotiate. If the server responds with a Type 2
 /// Challenge, parses the `TargetInfo` AvPairs to check for `MsvAvChannelBindings`.
 /// Absent: EPA disabled: relay possible.
-fn probe_https(host: &str, url: &str) -> ProbeOutcome {
+fn probe_https(host: &str, url: &str, timeout: Duration) -> ProbeOutcome {
     debug!("ESC8 HTTPS probe: {}", url);
 
-    match check_port(host, 443) {
+    match check_port(host, 443, timeout) {
         PortState::Open => {}
         PortState::Closed => return ProbeOutcome::PortClosed,
         PortState::Unresolved(reason) => return ProbeOutcome::Failed(reason),
@@ -520,8 +512,8 @@ fn probe_https(host: &str, url: &str) -> ProbeOutcome {
     let auth_value = format!("NTLM {}", neg_b64);
 
     let client = match Client::builder()
-        .timeout(HTTPS_TIMEOUT)
-        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(timeout)
+        .connect_timeout(timeout)
         .danger_accept_invalid_certs(true)
         .build()
     {
@@ -870,7 +862,7 @@ mod tests {
     fn unreachable_host_reports_all_inaccessible_endpoints() {
         // 2 certsrv (HTTP + HTTPS) + HTTP + HTTPS CES endpoint per auth type.
         let expected = 2 + 2 * CES_AUTH_TYPES.len();
-        let result = check_esc8("192.0.2.1", "CORP-CA");
+        let result = check_esc8("192.0.2.1", "CORP-CA", std::time::Duration::from_millis(2_000));
 
         assert_eq!(result.endpoints.len(), expected, "every endpoint must be reported");
         assert!(!result.vulnerable, "non-routable host must not be flagged");
@@ -898,7 +890,7 @@ mod tests {
     /// endpoints are emitted, no CES.
     #[test]
     fn empty_ca_name_skips_ces() {
-        let result = check_esc8("192.0.2.1", "");
+        let result = check_esc8("192.0.2.1", "", std::time::Duration::from_millis(2_000));
         assert_eq!(result.endpoints.len(), 2);
         assert!(result
             .endpoints
