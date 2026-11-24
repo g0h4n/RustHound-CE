@@ -3001,7 +3001,7 @@ dependencies = [
 
 [[package]]
 name = "rusthound-ce"
-version = "2.5.52"
+version = "2.5.53"
 dependencies = [
  "adws",
  "aho-corasick",
