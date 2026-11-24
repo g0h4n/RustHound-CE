@@ -122,13 +122,14 @@ Counts every checkbox of the [List of attributes](#list-of-attributes) section, 
 > :new: Planned. A shared ****SMB / RPC collection**** option group that paces and bounds every machine-contacting module. These flags MUST be consumed by **all** scan modules, `Session`, `LocalGroup`, `WebClient`, `CARegistry` and the future MS-RRP registry collectors, instead of the per-module constants hard-coded today.
 
 - [ ] Multi-value `-c` / `CollectionMethods` :red_circle: :new: accept several collection methods at once, comma-separated or repeated (`-c LocalGroup,WebClient` or `-c LocalGroup -c WebClient`). Replaces the single-value `CollectionMethod` enum with a `CollectionMethods` set; `DCOnly` / `LdapOnly` stay dominant no-machine scopes that suppress every member-machine collector even when combined. Today `-c` takes a single value (`All` is the only way to run several collectors together).
-- [ ] `--workers` :red_circle: :new: max concurrent in-flight SMB sessions (bounded stream), default 50. Replaces the per-module `DEFAULT_CONCURRENCY`
-- [ ] `--throttle` :red_circle: :new: base delay before each SMB/RPC connection, ms (SharpHound `--Throttle`), default 0
-- [ ] `--jitter` :red_circle: :new: random extra delay added on top of `--throttle`, ms (SharpHound `--Jitter`), default 0
-- [ ] `--smb-timeout` :red_circle: :new: TCP/445 reachability pre-check timeout, ms, default 1000. Replaces `DEFAULT_PORT_TIMEOUT_MS`
-- [ ] `--host-timeout` :red_circle: :new: whole per-host budget (connect + auth + probe), ms, default 8000. Replaces `DEFAULT_HOST_TIMEOUT_MS`
-- [ ] `--computer-expiry-days` :red_circle: :new: only probe computers whose `pwdLastSet` is within N days (SharpHound `ComputerExpiryDays`), default 60, replaces `DEFAULT_EXPIRY_DAYS`
-- [ ] `--opsec` :red_circle: :new: stealth preset: shuffles target order, lowers `--workers`, adds `--throttle`/`--jitter` (without overriding values set explicitly on the CLI)
+- [x] `--workers` :red_circle: :new: max concurrent in-flight SMB sessions (bounded stream), default 50. Replaces the per-module `DEFAULT_CONCURRENCY`
+- [x] `--throttle` :red_circle: :new: base delay before each SMB/RPC connection, ms (SharpHound `--Throttle`), default 0
+- [x] `--jitter` :red_circle: :new: random extra delay added on top of `--throttle`, ms (SharpHound `--Jitter`), default 0
+- [x] `--ldap-timeout` :red_circle: :new: LDAP connection timeout, ms, default 10000. Replaces the hardcoded 10-second LDAP timeout that failed over high-latency links such as SOCKS tunnels or VPN pivots
+- [x] `--smb-timeout` :red_circle: :new: TCP/445 reachability pre-check timeout, ms, default 1000. Replaces `DEFAULT_PORT_TIMEOUT_MS`
+- [x] `--host-timeout` :red_circle: :new: whole per-host budget (connect + auth + probe), ms, default 8000. Replaces `DEFAULT_HOST_TIMEOUT_MS`
+- [x] `--computer-expiry-days` :red_circle: :new: only probe computers whose `pwdLastSet` is within N days (SharpHound `ComputerExpiryDays`), default 60, replaces `DEFAULT_EXPIRY_DAYS`
+- [x] `--opsec` :red_circle: :new: stealth preset: shuffles target order, lowers `--workers`, adds `--throttle`/`--jitter` (without overriding values set explicitly on the CLI)
 
 > Centralising these in a single `SmbOptions` struct (new `.next_help_heading("SMB / RPC COLLECTION")` block in `args.rs`) removes the duplicated `DEFAULT_CONCURRENCY` / `DEFAULT_PORT_TIMEOUT_MS` / `DEFAULT_HOST_TIMEOUT_MS` / `DEFAULT_EXPIRY_DAYS` constants currently living in `session`, `localgroup` and `webclient`, and lets the operator trade speed for stealth across the whole collection at once.
 
