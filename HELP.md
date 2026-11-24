@@ -225,7 +225,7 @@ OPTIONAL VALUES:
   -p, --ldappassword <ldappassword>  LDAP password
   -H, --hashes <hashes>              NT hash for pass-the-hash authentication (NTLM), accept [NTHASH, :NTHASH, LMHASH:NTHASH]
   -f, --ldapfqdn <ldapfqdn>          Domain Controller FQDN like: DC01.DOMAIN.LOCAL or just DC01
-  -i, --ldapip <ldapip>              Domain Controller IP address like: 192.168.1.10
+  -i, --ldapip <ldapip>              Domain Controller IP address or hostname like: 192.168.1.10 or dc01.domain.local
   -P, --ldapport <ldapport>          LDAP port [default: 389, or 636 with --ldaps]
   -n, --name-server <name-server>    Alternative IP address name server to use for DNS queries
   -o, --output <output>              Output directory where you would like to save JSON files [default: ./]

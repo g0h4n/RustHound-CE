@@ -301,7 +301,15 @@ fn krb_err(resp: &[u8]) -> String {
 
 async fn kdc_exchange(kdc: &str, request: &[u8]) -> Result<Vec<u8>> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let addr = if kdc.contains(':') { kdc.to_string() } else { format!("{kdc}:88") };
+    // Resolve the KDC through trust-dns: `TcpStream::connect` would hand the name
+    // to getaddrinfo/NSS, which is fatal in static glibc builds.
+    let addr = if kdc.parse::<std::net::IpAddr>().is_ok() {
+        crate::transport::host_port(kdc, 88, None)
+    } else if kdc.contains(':') {
+        kdc.to_string()
+    } else {
+        crate::transport::resolved_host_port(kdc, 88).await
+    };
 
     trace!("[krb] KDC connect {addr}, sending {} bytes", request.len());
     let mut stream = tokio::net::TcpStream::connect(&addr).await.map_err(|e| {

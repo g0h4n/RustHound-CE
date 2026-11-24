@@ -54,7 +54,7 @@ pub async fn connect_authenticated(
     user: &str,
     auth: SmbAuth<'_>,
 ) -> anyhow::Result<SmbClient> {
-    let target = format!("{host}:445");
+    let target = crate::transport::resolved_host_port(host, 445).await;
 
     // TCP connect and SMB negotiate.
     trace!("[{host}] SMB connecting to {target}");
@@ -244,13 +244,14 @@ pub fn smb_identity(raw: &str, default_domain: &str) -> (String, String) {
 /// instead of eating the full connect budget. Shared by the sessions,
 /// local-group and webclient modules.
 pub async fn is_reachable(host: &str, port_timeout_ms: Duration) -> bool {
-    let target = format!("{host}:445");
-    trace!("[{host}] is_reachable: begin, target={target}, budget={port_timeout_ms:?}ms");
-    trace!("[{host}] is_reachable: >>> TcpStream::connect({target}) (name resolution happens here)");
-    let outcome = timeout(
-        port_timeout_ms,
-        TcpStream::connect(target),
-    )
+    trace!("[{host}] is_reachable: begin, budget={port_timeout_ms:?}");
+    // Resolve inside the timeout so a slow or dead DNS server is bounded by the
+    // same budget as the connect, as it was when getaddrinfo did the lookup.
+    let outcome = timeout(port_timeout_ms, async {
+        let target = crate::transport::resolved_host_port(host, 445).await;
+        trace!("[{host}] is_reachable: >>> TcpStream::connect({target})");
+        TcpStream::connect(target).await
+    })
     .await;
     let reachable = matches!(outcome, Ok(Ok(_)));
     trace!("[{host}] is_reachable: <<< returned, reachable={reachable}");

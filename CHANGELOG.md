@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+`-i`/`--ldapip` accepting a Domain Controller **hostname** no longer kills the process with `Floating point exception (core dumped)` before the bind. The signal was SIGFPE, not a segmentation fault, and it came from glibc, not from the TLS stack: the name went to `getaddrinfo`, NSS `dlopen`ed the module configured in `/etc/nsswitch.conf` (`libnss_mdns4_minimal.so.2` on Ubuntu hosts with `libnss-mdns`), and loading that module pulled `libc.so.6` into a **statically linked** (`+crt-static`) binary. glibc does not support that second libc: its ELF init runs `__libc_early_init` → `__pthread_early_init` → `__nptl_tls_static_size_for_stack`, whose `roundup(_dl_tls_static_size, _dl_tls_static_align)` divides by a `_dl_tls_static_align` the static startup never set, so `div rsi` at `libc+0x175c79` trapped with a zero divisor and every tokio thread died at once. The same `div` came back on the **SMB** path with a numeric `-i`, because the GPO SYSVOL module connects to the DC by its FQDN (`-f`): one name lookup anywhere in the process is enough.
+
+Every name lookup that feeds a socket connect now goes through the in-tree trust-dns resolver (`src/modules/resolver/resolv.rs`, system resolver configuration, pure Rust) instead of `getaddrinfo`/NSS. `src/transport/ldap.rs` gains `url_host` / `with_host` / `resolve_url_host`, which rewrite `ldaps://dc01.corp.local:636` to `ldaps://10.0.0.5:636` while keeping the scheme, port and path; `src/transport/mod.rs` gains `host_port` (pure, IPv6-bracketing, tested) plus `resolved_host_port` and a blocking `resolved_host_port_blocking` for callers already on a blocking thread. These are wired into the LDAP URL, `smb::connect_authenticated`, `smb::is_reachable`, the duplicate `is_reachable` in the local-group module, the Kerberos KDC connect (TCP/88) and the ESC8 port check, which no longer calls `to_socket_addrs` at all. The ESC8 web-enrollment and CES HTTP(S) probes install `TrustDnsResolver` as the `reqwest` DNS resolver, so redirects are covered too and the URL keeps its hostname for the `Host` header and TLS SNI. IP literals are skipped, and a failed lookup falls back to the hostname, so behaviour is unchanged wherever NSS was working and the SMB session still authenticates against the original hostname/SPN.
+
+Verified on Ubuntu 22.04 (glibc 2.35) where the shipped static binary died on every run: rebuilt static with `-C target-feature=+crt-static`, `-i <fqdn>` now resolves to the DC IP, the SMB/GPO SYSVOL collection completes, `strace` records **zero** `libnss_*.so` opens, and the run exits `0` with no new kernel trap.
+
+`make build_linux_x86_64` additionally drops `-C target-feature=+crt-static` and ships a dynamic glibc binary as defence in depth, since a dependency can still resolve names itself (the `adws` crate connects to `-t adws` targets by name); the release workflow now builds the `Linux-gnu-x86_64` asset the same way, so downloaded binaries get the fix too, while Windows and macOS keep `+crt-static`. `build_linux_musl` remains the fully static option. `--ldapip` help now mentions hostnames.
+
 ## 2.5.52 - 2026-11-19
 
 ### Added
